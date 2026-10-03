@@ -1,26 +1,82 @@
 @import "tailwindcss";
 
+/*
+ * Fixie palette. Every colour in the app comes from these tokens.
+ * Components use the Tailwind names (bg-moss, text-ink, ...), never raw hex.
+ * The result sheet stays light in every system theme: it gets read outdoors,
+ * and dark-on-pale holds up in sunlight far better than the reverse.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --moss: #2e5b39;
+  --moss-deep: #183322;
+  --fern: #6f9a5c;
+  --bark: #5a3f2c;
+  --dewdrop: #9fd3e0;
+  --glimmer: #edca63;
+  --glimmer-soft: #f7e7b4;
+  --lichen: #eef3e6;
+  --ink: #1c2a1f;
+  --ink-soft: #46574a;
+  --ember: #a8401f;
+  --ember-soft: #f8e1d6;
+
+  /* One hue per fairy. Paired with ink text, all pass AA on the badge. */
+  --fairy-glass: #9fd3e0;
+  --fairy-paper: #d9bf94;
+  --fairy-metal: #c3cbcf;
+  --fairy-plastic: #f2b8c6;
+  --fairy-textile: #c9b6e4;
+  --fairy-organic: #a9cf8a;
+  --fairy-electronic: #f0d36e;
+  --fairy-mixed: #d6d0c4;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-moss: var(--moss);
+  --color-moss-deep: var(--moss-deep);
+  --color-fern: var(--fern);
+  --color-bark: var(--bark);
+  --color-dewdrop: var(--dewdrop);
+  --color-glimmer: var(--glimmer);
+  --color-glimmer-soft: var(--glimmer-soft);
+  --color-lichen: var(--lichen);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ember: var(--ember);
+  --color-ember-soft: var(--ember-soft);
+
+  --color-fairy-glass: var(--fairy-glass);
+  --color-fairy-paper: var(--fairy-paper);
+  --color-fairy-metal: var(--fairy-metal);
+  --color-fairy-plastic: var(--fairy-plastic);
+  --color-fairy-textile: var(--fairy-textile);
+  --color-fairy-organic: var(--fairy-organic);
+  --color-fairy-electronic: var(--fairy-electronic);
+  --color-fairy-mixed: var(--fairy-mixed);
+
+  --font-display: var(--font-corben);
+  --font-sans: var(--font-figtree);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+html,
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--moss-deep);
+  color: var(--ink);
+  /* The camera owns the screen; no rubber-band scroll behind it. */
+  overscroll-behavior: none;
+}
+
+:focus-visible {
+  outline: 3px solid var(--glimmer);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
