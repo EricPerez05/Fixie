@@ -1,26 +1,45 @@
 @import "tailwindcss";
 
 /*
- * Fixie palette. Every colour in the app comes from these tokens.
- * Components use the Tailwind names (bg-moss, text-ink, ...), never raw hex.
- * The result sheet stays light in every system theme: it gets read outdoors,
- * and dark-on-pale holds up in sunlight far better than the reverse.
+ * Fixie palette, from the "forest grove" mockup. Every colour in the app
+ * comes from these tokens; components use the Tailwind names (bg-moss,
+ * text-ink, ...), never raw hex.
+ *
+ * Muted text tokens are a shade darker than the mockup so small copy still
+ * passes WCAG AA on cream, which matters when reading outdoors.
  */
 :root {
-  --moss: #2e5b39;
-  --moss-deep: #183322;
-  --fern: #6f9a5c;
+  /* Greens */
+  --moss-night: #17412c;
+  --moss-deep: #1f553b;
+  --moss: #276344;
+  --fern: #527e50;
+  --sage: #e2eddb;
+  --sage-mist: #dbe8d2;
+  --sage-shade: #c5d8bf;
+
+  /* Paper */
+  --cream: #f9f7ed;
+  --paper: #fffdf5;
+
+  /* Gold */
+  --glimmer: #e5d78f;
+  --glimmer-bright: #ffe889;
+  --honey-light: #ddca78; /* gold text on dark green */
+  --honey: #7d611e; /* gold text on cream */
+
+  /* Text */
+  --ink: #173e2c;
+  --ink-soft: #55665a;
+  --lichen: #f7f3df; /* light text on dark green */
+
+  /* Verdicts */
   --bark: #5a3f2c;
-  --dewdrop: #9fd3e0;
-  --glimmer: #edca63;
-  --glimmer-soft: #f7e7b4;
-  --lichen: #eef3e6;
-  --ink: #1c2a1f;
-  --ink-soft: #46574a;
   --ember: #a8401f;
   --ember-soft: #f8e1d6;
+  --dewdrop: #9fd3e0;
 
-  /* One hue per fairy. Paired with ink text, all pass AA on the badge. */
+  /* One hue per fairy. Paired with ink outlines, all read on the hero. */
   --fairy-glass: #9fd3e0;
   --fairy-paper: #d9bf94;
   --fairy-metal: #c3cbcf;
@@ -29,21 +48,48 @@
   --fairy-organic: #a9cf8a;
   --fairy-electronic: #f0d36e;
   --fairy-mixed: #d6d0c4;
+
+  /* Desktop phone frame chrome (titanium edge, glass bezel). */
+  --device-edge-light: #e6deef;
+  --device-edge: #b8accb;
+  --device-edge-dark: #857a99;
+  --device-bezel: #0c0c0e;
+
+  /*
+   * Safe-area insets go through these so the desktop phone frame can fake a
+   * Dynamic Island and home indicator. On real phones they are the device's.
+   */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
+/*
+ * Laptops and monitors: wide AND driven by a mouse. Width alone would also
+ * match phones in landscape and tablets, which should stay full-screen.
+ */
+@custom-variant desk (@media (min-width: 768px) and (hover: hover) and (pointer: fine));
+
 @theme inline {
-  --color-moss: var(--moss);
+  --color-moss-night: var(--moss-night);
   --color-moss-deep: var(--moss-deep);
+  --color-moss: var(--moss);
   --color-fern: var(--fern);
-  --color-bark: var(--bark);
-  --color-dewdrop: var(--dewdrop);
+  --color-sage: var(--sage);
+  --color-sage-mist: var(--sage-mist);
+  --color-sage-shade: var(--sage-shade);
+  --color-cream: var(--cream);
+  --color-paper: var(--paper);
   --color-glimmer: var(--glimmer);
-  --color-glimmer-soft: var(--glimmer-soft);
-  --color-lichen: var(--lichen);
+  --color-glimmer-bright: var(--glimmer-bright);
+  --color-honey-light: var(--honey-light);
+  --color-honey: var(--honey);
   --color-ink: var(--ink);
   --color-ink-soft: var(--ink-soft);
+  --color-lichen: var(--lichen);
+  --color-bark: var(--bark);
   --color-ember: var(--ember);
   --color-ember-soft: var(--ember-soft);
+  --color-dewdrop: var(--dewdrop);
 
   --color-fairy-glass: var(--fairy-glass);
   --color-fairy-paper: var(--fairy-paper);
@@ -54,8 +100,13 @@
   --color-fairy-electronic: var(--fairy-electronic);
   --color-fairy-mixed: var(--fairy-mixed);
 
-  --font-display: var(--font-corben);
-  --font-sans: var(--font-figtree);
+  --color-device-edge-light: var(--device-edge-light);
+  --color-device-edge: var(--device-edge);
+  --color-device-edge-dark: var(--device-edge-dark);
+  --color-device-bezel: var(--device-bezel);
+
+  --font-display: var(--font-fraunces);
+  --font-sans: var(--font-dm-sans);
 }
 
 html,
@@ -69,6 +120,25 @@ body {
 :focus-visible {
   outline: 3px solid var(--glimmer);
   outline-offset: 3px;
+}
+
+/* Glowing dots that drift over the dark scan screens. */
+.firefly {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 9999px;
+  background: var(--glimmer-bright);
+  box-shadow: 0 0 9px 3px color-mix(in srgb, var(--glimmer-bright) 70%, transparent);
+  animation: firefly-drift 3s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes firefly-drift {
+  50% {
+    transform: translate(4px, -8px);
+    opacity: 0.55;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -21,19 +21,21 @@ const COPY = {
 export function PermissionFallback({ reason, onFile, onRetry }: PermissionFallbackProps): React.JSX.Element {
   const copy = COPY[reason];
   return (
-    <div className="flex flex-col items-start gap-5">
-      <h2 className="font-display text-2xl leading-tight text-lichen">{copy.heading}</h2>
-      <p className="max-w-[34ch] text-base leading-relaxed text-lichen/85">{copy.body}</p>
-      <div className="flex flex-wrap items-center gap-3">
-        <UploadButton onFile={onFile} label="Upload a photo" variant="primary" />
+    <section className="flex flex-col items-center px-2 pt-20 text-center">
+      <h1 className="font-display text-[1.9rem] leading-[1.1] font-semibold tracking-tight text-lichen">
+        {copy.heading}
+      </h1>
+      <p className="mt-3 max-w-[32ch] text-[15px] leading-relaxed text-lichen/80">{copy.body}</p>
+      <div className="mt-8 flex flex-col items-center gap-2">
+        <UploadButton onFile={onFile} variant="primary" />
         <button
           type="button"
           onClick={onRetry}
-          className="min-h-11 rounded-full px-4 text-base text-lichen underline decoration-glimmer decoration-2 underline-offset-4"
+          className="min-h-11 text-sm font-semibold text-honey-light underline decoration-honey-light/50 underline-offset-4"
         >
           Try the camera again
         </button>
       </div>
-    </div>
+    </section>
   );
 }
