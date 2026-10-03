@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ScanResult } from "@/lib/scan/schema";
+import { DEMO_RESULTS } from "@/lib/scan/demo-results";
 import { log } from "@/lib/log";
 
 export type ScanState =
@@ -14,6 +15,8 @@ export interface UseScan {
   state: ScanState;
   scan: (image: string) => Promise<void>;
   retry: () => Promise<void>;
+  /** Shows a canned result with no camera and no network, for the "try an example" link. */
+  showExample: () => void;
   reset: () => void;
 }
 
@@ -89,6 +92,14 @@ export function useScan({ isDemo = false }: { isDemo?: boolean } = {}): UseScan 
     if (lastImageRef.current) await scan(lastImageRef.current);
   }, [scan]);
 
+  const showExample = useCallback((): void => {
+    controllerRef.current?.abort();
+    controllerRef.current = null;
+    lastImageRef.current = null;
+    const example = DEMO_RESULTS[Math.floor(Math.random() * DEMO_RESULTS.length)];
+    setState({ status: "success", result: example });
+  }, []);
+
   const reset = useCallback((): void => {
     controllerRef.current?.abort();
     controllerRef.current = null;
@@ -98,5 +109,5 @@ export function useScan({ isDemo = false }: { isDemo?: boolean } = {}): UseScan 
 
   useEffect(() => () => controllerRef.current?.abort(), []);
 
-  return { state, scan, retry, reset };
+  return { state, scan, retry, showExample, reset };
 }
