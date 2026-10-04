@@ -14,6 +14,7 @@ import { PermissionFallback } from "./camera/permission-fallback";
 import { ScanButton } from "./camera/scan-button";
 import { UploadButton } from "./camera/upload-button";
 import { ResultCard, ResultHeading, ScanAgainButton } from "./result/result-card";
+import { BottomNav } from "./ui/bottom-nav";
 import { Icon } from "./ui/icon";
 import { InspectingOverlay } from "./ui/inspecting-overlay";
 import { LocationField } from "./ui/location-field";
@@ -121,9 +122,10 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
           camera.status === "denied" || camera.status === "unavailable" ? (
             <div className="flex h-full flex-col">
               <TopBar tone="dark" isDemo={isDemo} />
-              <div className="flex min-h-0 flex-1 flex-col justify-[safe_center] px-6 pb-[max(1rem,var(--safe-bottom))]">
+              <div className="flex min-h-0 flex-1 flex-col justify-[safe_center] px-6 pb-[calc(5.5rem+var(--safe-bottom))]">
                 <PermissionFallback reason={camera.status} onFile={onFile} onRetry={() => void camera.start()} />
               </div>
+              <BottomNav onScan={() => void camera.start()} onHome={goHome} isScanBusy={false} />
             </div>
           ) : (
             <div className="relative h-full">
@@ -142,6 +144,11 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
                 onFile={onFile}
                 location={location}
                 onLocationChange={setLocation}
+              />
+              <BottomNav
+                onScan={() => void camera.start()}
+                onHome={goHome}
+                isScanBusy={camera.status === "requesting"}
               />
             </div>
           )
@@ -204,7 +211,7 @@ function Welcome({
         isWaiting={isRequesting}
         label={isResuming ? "Resume camera" : "Open camera"}
       />
-      <div className="flex flex-col items-center self-start pb-[max(1rem,var(--safe-bottom))]">
+      <div className="flex flex-col items-center self-start pb-[calc(5.5rem+var(--safe-bottom))]">
       <h2 className="mt-[clamp(8px,2.5cqh,20px)] font-display text-[clamp(1.25rem,3.4cqh,1.5rem)] font-semibold text-lichen">
         {isRequesting ? "Waiting for the camera…" : isResuming ? "Tap to resume" : "Tap to discover"}
       </h2>
