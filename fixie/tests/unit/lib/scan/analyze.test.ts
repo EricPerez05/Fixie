@@ -1,18 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ScanResult } from "@/lib/scan/schema";
 
-const { mockCreate, MockAPIError } = vi.hoisted(() => {
+const { mockCreate, MockAPIError, mockKnowledge } = vi.hoisted(() => {
   class MockAPIError extends Error {
     constructor(public status: number) {
       super(`API error ${status}`);
       this.name = "APIError";
     }
   }
-  return { mockCreate: vi.fn(), MockAPIError };
+  return { mockCreate: vi.fn(), MockAPIError, mockKnowledge: vi.fn(() => "") };
 });
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/log", () => ({ log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
+vi.mock("@/lib/scan/knowledge", () => ({ getKnowledgeBlock: mockKnowledge }));
 vi.mock("@anthropic-ai/sdk", () => {
   class Anthropic {
     static APIError = MockAPIError;
@@ -36,9 +37,12 @@ const JAR: ScanResult = {
   confidence: "high",
 };
 
+const USAGE = { input_tokens: 1200, output_tokens: 300, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
+
 function toolResponse(input: unknown, stopReason = "tool_use"): unknown {
   return {
     stop_reason: stopReason,
+    usage: USAGE,
     content: [{ type: "tool_use", id: "toolu_1", name: "report_item", input }],
   };
 }
@@ -68,6 +72,7 @@ describe("analyzeItem", () => {
     vi.stubEnv("ANTHROPIC_API_KEY", "test-key");
     resetClientForTests();
     mockCreate.mockReset();
+    mockKnowledge.mockReturnValue("");
   });
   afterEach(() => vi.unstubAllEnvs());
 
@@ -106,12 +111,37 @@ describe("analyzeItem", () => {
   it.each([
     ["an API error", () => mockCreate.mockRejectedValue(new MockAPIError(500))],
     ["a timeout", () => mockCreate.mockRejectedValue(Object.assign(new Error("timed out"), { name: "APIConnectionTimeoutError" }))],
-    ["a refusal", () => mockCreate.mockResolvedValue({ stop_reason: "refusal", content: [] })],
-    ["a text reply with no tool call", () => mockCreate.mockResolvedValue({ stop_reason: "end_turn", content: [{ type: "text", text: "A jar!" }] })],
+    ["a refusal", () => mockCreate.mockResolvedValue({ stop_reason: "refusal", usage: USAGE, content: [] })],
+    ["a text reply with no tool call", () => mockCreate.mockResolvedValue({ stop_reason: "end_turn", usage: USAGE, content: [{ type: "text", text: "A jar!" }] })],
     ["malformed tool output", () => mockCreate.mockResolvedValue(toolResponse({ status: "ok", item: 42 }))],
   ])("returns UNSURE_RESULT on %s", async (_, arrange) => {
     arrange();
     expect(await analyzeItem({ image: "QUJD" })).toEqual(UNSURE_RESULT);
+  });
+
+  it("sends only the instructions, cached, when the knowledge base is empty", async () => {
+    mockCreate.mockResolvedValue(toolResponse(JAR));
+    await analyzeItem({ image: "QUJD" });
+    const system = mockCreate.mock.calls[0][0].system;
+    expect(system).toHaveLength(1);
+    expect(system[0].cache_control).toEqual({ type: "ephemeral" });
+  });
+
+  it("appends the knowledge base after the instructions and caches through it", async () => {
+    mockKnowledge.mockReturnValue("Verified knowledge base. <note names=\"Pizza box\">...</note>");
+    mockCreate.mockResolvedValue(toolResponse(JAR));
+    await analyzeItem({ image: "QUJD" });
+    const system = mockCreate.mock.calls[0][0].system;
+    expect(system).toHaveLength(2);
+    expect(system[0].cache_control).toBeUndefined();
+    expect(system[1].text).toContain("Pizza box");
+    expect(system[1].cache_control).toEqual({ type: "ephemeral" });
+  });
+
+  it("applies the safety rules even when the knowledge base is in play", async () => {
+    mockKnowledge.mockReturnValue("Verified knowledge base. <note names=\"Battery\">...</note>");
+    mockCreate.mockResolvedValue(toolResponse({ ...JAR, recyclable: "special_dropoff", caution: "Fire risk." }));
+    expect((await analyzeItem({ image: "QUJD" })).repurpose).toEqual([]);
   });
 
   it("throws when the API key is missing", async () => {
