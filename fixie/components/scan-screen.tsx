@@ -3,6 +3,7 @@
 import { useEffect, useId, useState } from "react";
 import { AnimatePresence, MotionConfig } from "framer-motion";
 import { useCamera } from "@/hooks/use-camera";
+import { useLocation } from "@/hooks/use-location";
 import { useScan, type ScanState } from "@/hooks/use-scan";
 import { captureFrame } from "@/lib/camera/capture-frame";
 import { loadImageFile } from "@/lib/camera/load-image";
@@ -15,6 +16,7 @@ import { UploadButton } from "./camera/upload-button";
 import { ResultCard, ResultHeading, ScanAgainButton } from "./result/result-card";
 import { Icon } from "./ui/icon";
 import { InspectingOverlay } from "./ui/inspecting-overlay";
+import { LocationField } from "./ui/location-field";
 import { Panel } from "./ui/panel";
 import { TopBar } from "./ui/top-bar";
 
@@ -25,7 +27,8 @@ interface ScanScreenProps {
 /** Composes camera, scan and result. All data access lives in the hooks. */
 export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
   const camera = useCamera();
-  const scanner = useScan({ isDemo });
+  const { location, setLocation } = useLocation();
+  const scanner = useScan({ isDemo, location });
   const panelHeadingId = useId();
   const [captureError, setCaptureError] = useState<string | null>(null);
 
@@ -83,6 +86,8 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
     <MotionConfig reducedMotion="user">
       {/* A size container: screens size type and spacing in cqh so everything
           fits one screen, with no scrolling, from short phones to the desktop frame. */}
+      {/* On short screens (under 640px of app height) the home screen drops its
+          two secondary lines so everything still fits without scrolling. */}
       <main className="relative h-full w-full overflow-clip [container-type:size] bg-moss-deep bg-[radial-gradient(circle_at_50%_42%,color-mix(in_srgb,var(--fern)_25%,transparent),transparent_34%)] text-lichen">
         <CameraView videoRef={camera.videoRef} isVisible={isCameraLive} />
 
@@ -114,7 +119,7 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
         ) : (
           <div className="flex h-full flex-col">
             <TopBar tone="dark" isDemo={isDemo} />
-            <div className="flex min-h-0 flex-1 flex-col justify-center px-6 pb-[max(1rem,var(--safe-bottom))]">
+            <div className="flex min-h-0 flex-1 flex-col justify-[safe_center] px-6 pb-[max(1rem,var(--safe-bottom))]">
               {camera.status === "denied" || camera.status === "unavailable" ? (
                 <PermissionFallback reason={camera.status} onFile={onFile} onRetry={() => void camera.start()} />
               ) : (
@@ -124,6 +129,8 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
                   onOpenCamera={() => void camera.start()}
                   onExample={scanner.showExample}
                   onFile={onFile}
+                  location={location}
+                  onLocationChange={setLocation}
                 />
               )}
             </div>
@@ -160,12 +167,16 @@ function Welcome({
   onOpenCamera,
   onExample,
   onFile,
+  location,
+  onLocationChange,
 }: {
   isResuming: boolean;
   isRequesting: boolean;
   onOpenCamera: () => void;
   onExample: () => void;
   onFile: (file: File) => void;
+  location: string;
+  onLocationChange: (value: string) => void;
 }): React.JSX.Element {
   return (
     <div className="flex flex-col items-center text-center">
@@ -174,7 +185,7 @@ function Welcome({
         <h1 className="mt-2 font-display text-[clamp(1.6rem,5cqh,2.15rem)] leading-[1.08] font-semibold tracking-tight text-lichen">
           What are we giving a <em className="font-semibold text-honey-light not-italic">second life</em> today?
         </h1>
-        <p className="mx-auto mt-[clamp(6px,1.5cqh,12px)] max-w-[30ch] text-[clamp(14px,2cqh,15px)] leading-relaxed text-lichen/80">
+        <p className="mx-auto mt-[clamp(6px,1.5cqh,12px)] max-w-[30ch] [@container(max-height:640px)]:hidden text-[clamp(14px,2cqh,15px)] leading-relaxed text-lichen/80">
           Snap a photo and a fairy will tell you how to recycle it, and how to reuse it.
         </p>
       </section>
@@ -188,7 +199,7 @@ function Welcome({
       <h2 className="mt-[clamp(8px,2.5cqh,20px)] font-display text-[clamp(1.25rem,3.4cqh,1.5rem)] font-semibold text-lichen">
         {isRequesting ? "Waiting for the camera…" : isResuming ? "Tap to resume" : "Tap to discover"}
       </h2>
-      <p className="mt-1 text-sm text-lichen/80">Photograph any item you&rsquo;re ready to part with</p>
+      <p className="mt-1 text-sm text-lichen/80 [@container(max-height:640px)]:hidden">Photograph any item you&rsquo;re ready to part with</p>
 
       <div className="mt-[clamp(4px,1.5cqh,16px)] flex flex-col items-center">
         <button
@@ -200,6 +211,10 @@ function Welcome({
           <Icon name="sparkle" size={14} className="fill-glimmer text-honey-light" />
         </button>
         <UploadButton onFile={onFile} label="Upload a photo instead" />
+      </div>
+
+      <div className="mt-6 flex w-full justify-center">
+        <LocationField value={location} onChange={onLocationChange} />
       </div>
     </div>
   );

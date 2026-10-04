@@ -1,16 +1,20 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
-import { getScanEnv } from "@/lib/env";
+import { getGeminiEnv, getScanEnv, getScanProvider } from "@/lib/env";
 import { log } from "@/lib/log";
+import { requestGeminiReport } from "./gemini";
 import { getKnowledgeBlock } from "./knowledge";
 import { REPORT_TOOL, REPORT_TOOL_NAME, SYSTEM_PROMPT, buildUserText } from "./prompt";
-import { ScanResult, UNSURE_RESULT, type ScanRequest } from "./schema";
+import { MAX_IDEAS, MAX_STEPS, MAX_SUPPLIES, ScanResult, UNSURE_RESULT, type ScanRequest } from "./schema";
 
 // Timeout sits below the route's maxDuration (30s) so we fail gracefully
 // with UNSURE_RESULT instead of the platform killing the request. One retry
 // at most: a second timeout would overrun maxDuration anyway.
 const SDK_TIMEOUT_MS = 25_000;
-const MAX_TOKENS = 1024;
+// A full answer (3 ideas, each with 5 supplies and 6 steps) is roughly
+// 900-1,100 output tokens; 2048 leaves headroom and still finishes in a few
+// seconds, well inside SDK_TIMEOUT_MS. Revisit with measured responses.
+const MAX_TOKENS = 2048;
 
 // Created on first use rather than at import, so a build or a test that never
 // scans doesn't need the API key.
@@ -32,8 +36,18 @@ function getClient(): { client: Anthropic; model: string } {
  * Never throws for model-side problems: timeouts, API errors, refusals,
  * a missing tool call and malformed output all return UNSURE_RESULT.
  * Throws only when the server is misconfigured (missing API key).
+ *
+ * Uses Claude when ANTHROPIC_API_KEY is set, otherwise Gemini's free tier
+ * when GEMINI_API_KEY is set. Both answers go through the same validation
+ * and safety rules.
  */
 export async function analyzeItem(input: ScanRequest): Promise<ScanResult> {
+  const gemini = getScanProvider() === "gemini" ? getGeminiEnv() : null;
+  if (gemini) {
+    const raw = await requestGeminiReport(input, gemini, getKnowledgeBlock());
+    return raw === null ? UNSURE_RESULT : validateReport(raw);
+  }
+
   const { client, model } = getClient();
 
   let response: Anthropic.Message;
@@ -85,12 +99,20 @@ export async function analyzeItem(input: ScanRequest): Promise<ScanResult> {
     return UNSURE_RESULT;
   }
 
-  const parsed = ScanResult.safeParse(trimLists(toolUse.input));
+  return validateReport(toolUse.input);
+}
+
+/** Checks a model's report against the contract, then applies the safety rules. */
+function validateReport(raw: unknown): ScanResult {
+  const parsed = ScanResult.safeParse(trimLists(raw));
   if (!parsed.success) {
-    log.warn("scan.invalid_model_output", { issues: parsed.error.issues.length });
+    log.warn("scan.invalid_model_output", {
+      issues: parsed.error.issues.length,
+      // Field names only, never values, so nothing from the photo is logged.
+      fields: parsed.error.issues.map((issue) => issue.path.join(".") || "(root)").join(", "),
+    });
     return UNSURE_RESULT;
   }
-
   return enforceSafetyRules(parsed.data);
 }
 
@@ -119,7 +141,18 @@ function trimLists(input: unknown): unknown {
   return {
     ...record,
     ...(Array.isArray(record.howToRecycle) && { howToRecycle: record.howToRecycle.slice(0, 5) }),
-    ...(Array.isArray(record.repurpose) && { repurpose: record.repurpose.slice(0, 3) }),
+    ...(Array.isArray(record.repurpose) && { repurpose: record.repurpose.slice(0, MAX_IDEAS).map(trimIdea) }),
+  };
+}
+
+/** Same for each project's supplies and steps. */
+function trimIdea(idea: unknown): unknown {
+  if (typeof idea !== "object" || idea === null) return idea;
+  const record = idea as Record<string, unknown>;
+  return {
+    ...record,
+    ...(Array.isArray(record.supplies) && { supplies: record.supplies.slice(0, MAX_SUPPLIES) }),
+    ...(Array.isArray(record.steps) && { steps: record.steps.slice(0, MAX_STEPS) }),
   };
 }
 

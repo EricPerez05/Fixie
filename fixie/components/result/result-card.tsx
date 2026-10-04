@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useId, useState } from "react";
 import type { Recyclable, ScanResult } from "@/lib/scan/schema";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { Fairy, FAIRIES } from "./fairy";
 import { IdeaCard } from "./idea-card";
+import { StepList } from "./step-list";
 
 interface ResultCardProps {
   result: ScanResult;
@@ -168,85 +169,6 @@ function TabButton({
     >
       {children}
     </button>
-  );
-}
-
-// Room kept for the "More steps" row when the steps don't all fit.
-const PAGER_PX = 52;
-
-/**
- * Numbered steps that never scroll. When they don't all fit (a short phone,
- * long steps, a caution taking space), it shows as many as fit and pages to
- * the rest. SAFETY: steps are never silently cut off; a hazardous item's
- * drop-off steps must always be reachable.
- */
-function StepList({ steps }: { steps: string[] }): React.JSX.Element {
-  const areaRef = useRef<HTMLDivElement>(null);
-  const [start, setStart] = useState(0);
-  const [fit, setFit] = useState<{ count: number; height: number | null }>({ count: steps.length, height: null });
-
-  useEffect(() => {
-    const area = areaRef.current;
-    if (!area) return;
-    // Fires once on observe, then whenever the space changes (rotation,
-    // window resize), so the page size always matches the screen.
-    const observer = new ResizeObserver(() => {
-      const top = area.getBoundingClientRect().top;
-      const bottoms = [...area.querySelectorAll("li")].map((item) => item.getBoundingClientRect().bottom - top);
-      if ((bottoms.at(-1) ?? 0) <= area.clientHeight) {
-        setFit({ count: bottoms.length, height: null });
-        return;
-      }
-      const count = Math.max(1, bottoms.filter((bottom) => bottom <= area.clientHeight - PAGER_PX).length);
-      // +1 keeps the list's bottom border inside the clip.
-      setFit({ count, height: bottoms[count - 1] + 1 });
-    });
-    observer.observe(area);
-    return () => observer.disconnect();
-  }, [start, steps]);
-
-  const shown = steps.slice(start);
-  const end = Math.min(start + fit.count, steps.length);
-  const hasMore = end < steps.length;
-
-  return (
-    <div ref={areaRef} className="relative h-full">
-      <ol
-        style={fit.height === null ? undefined : { maxHeight: fit.height }}
-        className="overflow-clip rounded-[18px] border border-ink/10 bg-paper"
-      >
-        {shown.map((step, offset) => (
-          <li
-            key={start + offset}
-            aria-hidden={offset >= fit.count || undefined}
-            className="flex items-center gap-3 border-b border-ink/10 px-3.5 py-[clamp(5px,1.2cqh,11px)] last:border-b-0"
-          >
-            <span
-              aria-hidden="true"
-              className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-sage font-display text-xs font-bold text-moss"
-            >
-              {start + offset + 1}
-            </span>
-            <span className="text-[clamp(13px,2cqh,15px)] leading-snug font-medium">{step}</span>
-          </li>
-        ))}
-      </ol>
-      {(hasMore || start > 0) && (
-        <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-3">
-          <p className="text-xs text-ink-soft">
-            Steps {start + 1}–{end} of {steps.length}
-          </p>
-          <button
-            type="button"
-            onClick={() => setStart(hasMore ? end : 0)}
-            className="inline-flex min-h-11 items-center gap-1.5 rounded-full bg-sage px-4 text-sm font-semibold text-moss"
-          >
-            {hasMore ? "More steps" : "Back to step 1"}
-            <Icon name="arrow" size={16} className={hasMore ? "" : "rotate-180"} />
-          </button>
-        </div>
-      )}
-    </div>
   );
 }
 

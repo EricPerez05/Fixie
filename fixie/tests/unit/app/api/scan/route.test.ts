@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "@/app/api/scan/route";
+import { clearCacheForTests } from "@/lib/scan/cache";
 import { ScanResult, UNSURE_RESULT } from "@/lib/scan/schema";
 
 const { mockAnalyze, mockCheckRateLimit } = vi.hoisted(() => ({
@@ -7,6 +8,7 @@ const { mockAnalyze, mockCheckRateLimit } = vi.hoisted(() => ({
   mockCheckRateLimit: vi.fn(),
 }));
 
+vi.mock("server-only", () => ({}));
 vi.mock("@/lib/log", () => ({ log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 vi.mock("@/lib/scan/analyze", () => ({ analyzeItem: mockAnalyze }));
 vi.mock("@/lib/rate-limit", () => ({ checkRateLimit: mockCheckRateLimit }));
@@ -23,6 +25,7 @@ describe("POST /api/scan", () => {
   beforeEach(() => {
     vi.stubEnv("ANTHROPIC_API_KEY", "test-key");
     mockCheckRateLimit.mockResolvedValue({ ok: true });
+    clearCacheForTests();
   });
   afterEach(() => vi.unstubAllEnvs());
 
@@ -70,6 +73,15 @@ describe("POST /api/scan", () => {
     expect(mockAnalyze).not.toHaveBeenCalled();
   });
 
+  it("calls the model when only a Gemini key is set", async () => {
+    vi.stubEnv("ANTHROPIC_API_KEY", "");
+    vi.stubEnv("GEMINI_API_KEY", "gemini-key");
+    mockAnalyze.mockReset();
+    mockAnalyze.mockResolvedValue(UNSURE_RESULT);
+    await POST(post({ image: "R0VN" }, { isDemo: false }));
+    expect(mockAnalyze).toHaveBeenCalledTimes(1);
+  });
+
   it("returns the model's result for live requests", async () => {
     mockAnalyze.mockResolvedValue(UNSURE_RESULT);
     const response = await POST(post({ image: "QUJD" }, { isDemo: false }));
@@ -82,5 +94,15 @@ describe("POST /api/scan", () => {
     const response = await POST(post({ image: "QUJD" }, { isDemo: false }));
     expect(response.status).toBe(500);
     expect(await response.json()).toEqual({ error: "server_error" });
+  });
+
+  it("answers a repeat of the same photo from the cache without calling the model again", async () => {
+    const jar: ScanResult = { ...UNSURE_RESULT, status: "ok", item: "Glass jar", confidence: "high" };
+    mockAnalyze.mockReset();
+    mockAnalyze.mockResolvedValue(jar);
+    await POST(post({ image: "SkFS" }, { isDemo: false }));
+    const second = await POST(post({ image: "SkFS" }, { isDemo: false }));
+    expect(await second.json()).toEqual(jar);
+    expect(mockAnalyze).toHaveBeenCalledTimes(1);
   });
 });

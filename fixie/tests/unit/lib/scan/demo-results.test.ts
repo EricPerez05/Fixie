@@ -1,6 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ScanResult } from "@/lib/scan/schema";
 import { DEMO_RESULTS, pickDemoResult } from "@/lib/scan/demo-results";
+
+vi.mock("server-only", () => ({}));
+
+const { enforceSafetyRules } = await import("@/lib/scan/analyze");
 
 describe("DEMO_RESULTS", () => {
   it.each(DEMO_RESULTS.map((result) => [result.item, result] as const))("%s matches the contract", (_, result) => {
@@ -13,6 +17,23 @@ describe("DEMO_RESULTS", () => {
     for (const result of DEMO_RESULTS) {
       if (result.recyclable === "special_dropoff" || result.caution) {
         expect(result.repurpose).toEqual([]);
+      }
+    }
+  });
+
+  it.each(DEMO_RESULTS.map((result) => [result.item, result] as const))(
+    "%s already satisfies the safety rules",
+    (_, result) => {
+      expect(enforceSafetyRules(result)).toEqual(result);
+    },
+  );
+
+  it("gives every safe item three beginner-sized projects", () => {
+    for (const result of DEMO_RESULTS.filter((r) => r.repurpose.length > 0)) {
+      expect(result.repurpose).toHaveLength(3);
+      for (const idea of result.repurpose) {
+        expect(idea.minutes).toBeLessThanOrEqual(60);
+        expect(idea.steps.length).toBeGreaterThanOrEqual(3);
       }
     }
   });
