@@ -41,3 +41,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Obsidian's per-user workspace and plugin state for the knowledge vault
+/knowledge/.obsidian/

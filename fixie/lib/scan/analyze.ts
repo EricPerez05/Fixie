@@ -2,6 +2,7 @@ import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
 import { getScanEnv } from "@/lib/env";
 import { log } from "@/lib/log";
+import { getKnowledgeBlock } from "./knowledge";
 import { REPORT_TOOL, REPORT_TOOL_NAME, SYSTEM_PROMPT, buildUserText } from "./prompt";
 import { ScanResult, UNSURE_RESULT, type ScanRequest } from "./schema";
 
@@ -40,7 +41,7 @@ export async function analyzeItem(input: ScanRequest): Promise<ScanResult> {
     response = await client.messages.create({
       model,
       max_tokens: MAX_TOKENS,
-      system: SYSTEM_PROMPT,
+      system: buildSystem(getKnowledgeBlock()),
       tools: [REPORT_TOOL],
       // "auto" rather than forcing the tool: newer models reject forced
       // tool_choice, and SCAN_MODEL may point at one. The prompt asks for the
@@ -65,6 +66,12 @@ export async function analyzeItem(input: ScanRequest): Promise<ScanResult> {
     return UNSURE_RESULT;
   }
 
+  log.info("scan.model_usage", {
+    inputTokens: response.usage.input_tokens,
+    cacheReadTokens: response.usage.cache_read_input_tokens ?? 0,
+    cacheWriteTokens: response.usage.cache_creation_input_tokens ?? 0,
+  });
+
   if (response.stop_reason === "refusal") {
     log.warn("scan.model_refused");
     return UNSURE_RESULT;
@@ -85,6 +92,20 @@ export async function analyzeItem(input: ScanRequest): Promise<ScanResult> {
   }
 
   return enforceSafetyRules(parsed.data);
+}
+
+/**
+ * The system prompt: fixed instructions, then the knowledge base when there
+ * is one. Both are identical on every request, so the whole prefix (tools +
+ * system) is cached from the marker on the last block.
+ */
+function buildSystem(knowledge: string): Anthropic.TextBlockParam[] {
+  const blocks: Anthropic.TextBlockParam[] = [{ type: "text", text: SYSTEM_PROMPT }];
+  if (knowledge) blocks.push({ type: "text", text: knowledge });
+  // Haiku 4.5 only caches prefixes of 4,096+ tokens; below that this marker is
+  // a silent no-op, so it costs nothing while the knowledge base is small.
+  blocks[blocks.length - 1] = { ...blocks[blocks.length - 1], cache_control: { type: "ephemeral" } };
+  return blocks;
 }
 
 /**
