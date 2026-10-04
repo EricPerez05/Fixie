@@ -8,15 +8,20 @@ interface LocationFieldProps {
   onChange: (value: string) => void;
 }
 
-/** Optional city or ZIP, so the fairy can give local recycling rules. */
+/**
+ * Optional city or ZIP, so the fairy can give local recycling rules.
+ * Compact on purpose: the start screen has to fit the orb, its text and the
+ * bottom nav without scrolling, so the label and hint are kept for screen
+ * readers and the placeholder carries the visible prompt.
+ */
 export function LocationField({ value, onChange }: LocationFieldProps): React.JSX.Element {
   const inputId = useId();
   const hintId = useId();
 
   return (
     <div className="w-full max-w-72 text-left">
-      <label htmlFor={inputId} className="text-sm font-semibold text-lichen">
-        Your city or ZIP <span className="font-normal text-lichen/70">(optional)</span>
+      <label htmlFor={inputId} className="sr-only">
+        Your city or ZIP (optional)
       </label>
       <input
         id={inputId}
@@ -24,13 +29,13 @@ export function LocationField({ value, onChange }: LocationFieldProps): React.JS
         inputMode="text"
         autoComplete="address-level2"
         maxLength={MAX_LOCATION_LENGTH}
-        placeholder="e.g. Austin, TX"
+        placeholder="Your city or ZIP (optional)"
         value={value}
         onChange={(event) => onChange(event.target.value)}
         aria-describedby={hintId}
-        className="mt-1.5 min-h-11 w-full rounded-xl border border-lichen/30 bg-moss-night/40 px-3.5 text-base text-lichen placeholder:text-lichen/50"
+        className="min-h-11 w-full rounded-xl border border-lichen/30 bg-moss-night/40 px-3.5 text-base text-lichen placeholder:text-lichen/50"
       />
-      <p id={hintId} className="mt-1 text-xs text-lichen/70 [@container(max-height:640px)]:hidden">
+      <p id={hintId} className="sr-only">
         Recycling rules vary by city, so this makes the advice local.
       </p>
     </div>
