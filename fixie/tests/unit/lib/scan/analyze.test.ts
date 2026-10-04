@@ -32,7 +32,17 @@ const JAR: ScanResult = {
   fairy: "glass",
   recyclable: "yes",
   howToRecycle: ["Rinse it out."],
-  repurpose: [{ title: "Fairy lantern", steps: "Add a battery tea light." }],
+  repurpose: [
+    {
+      title: "Fairy lantern",
+      summary: "A glowing jar lantern.",
+      difficulty: "easy",
+      minutes: 15,
+      supplies: ["Battery tea light", "Twine"],
+      steps: ["Drop in a battery tea light.", "Wrap twine around the neck."],
+      safety: null,
+    },
+  ],
   caution: null,
   confidence: "high",
 };
@@ -60,6 +70,11 @@ describe("enforceSafetyRules", () => {
 
   it("turns a low-confidence ok into unsure", () => {
     expect(enforceSafetyRules({ ...JAR, confidence: "low" }).status).toBe("unsure");
+  });
+
+  it("keeps an idea's own safety note; only a top-level caution strips ideas", () => {
+    const withNote = { ...JAR, repurpose: [{ ...JAR.repurpose[0], safety: "Cover the cut rim with tape." }] };
+    expect(enforceSafetyRules(withNote)).toEqual(withNote);
   });
 
   it("leaves a safe, confident result alone", () => {
@@ -106,6 +121,18 @@ describe("analyzeItem", () => {
     const idea = JAR.repurpose[0];
     mockCreate.mockResolvedValue(toolResponse({ ...JAR, repurpose: [idea, idea, idea, idea] }));
     expect((await analyzeItem({ image: "QUJD" })).repurpose).toHaveLength(3);
+  });
+
+  it("trims each idea's supplies and steps to their caps instead of failing", async () => {
+    const long = {
+      ...JAR.repurpose[0],
+      supplies: ["a", "b", "c", "d", "e", "f", "g"],
+      steps: ["1", "2", "3", "4", "5", "6", "7"],
+    };
+    mockCreate.mockResolvedValue(toolResponse({ ...JAR, repurpose: [long] }));
+    const [idea] = (await analyzeItem({ image: "QUJD" })).repurpose;
+    expect(idea.supplies).toEqual(["a", "b", "c", "d", "e"]);
+    expect(idea.steps).toEqual(["1", "2", "3", "4", "5", "6"]);
   });
 
   it.each([

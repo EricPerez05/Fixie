@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ScanRequest, ScanResult, UNSURE_RESULT } from "@/lib/scan/schema";
+import { ScanRequest, ScanResult, UNSURE_RESULT, UpcycleIdea } from "@/lib/scan/schema";
 import { DEMO_RESULTS } from "@/lib/scan/demo-results";
 
 describe("ScanResult", () => {
@@ -12,8 +12,21 @@ describe("ScanResult", () => {
     expect(ScanResult.safeParse({ ...DEMO_RESULTS[0], fairy: "unicorn" }).success).toBe(false);
   });
 
+  it("accepts a full upcycling idea, with or without a safety note", () => {
+    const idea = DEMO_RESULTS[1].repurpose[0];
+    expect(UpcycleIdea.safeParse(idea).success).toBe(true);
+    expect(UpcycleIdea.safeParse({ ...idea, safety: null }).success).toBe(true);
+  });
+
+  it("rejects an idea with no steps, too many supplies or an unknown difficulty", () => {
+    const idea = DEMO_RESULTS[0].repurpose[0];
+    expect(UpcycleIdea.safeParse({ ...idea, steps: [] }).success).toBe(false);
+    expect(UpcycleIdea.safeParse({ ...idea, supplies: ["a", "b", "c", "d", "e", "f"] }).success).toBe(false);
+    expect(UpcycleIdea.safeParse({ ...idea, difficulty: "hard" }).success).toBe(false);
+  });
+
   it("rejects more than three reuse ideas", () => {
-    const idea = { title: "x", steps: "y" };
+    const idea = DEMO_RESULTS[0].repurpose[0];
     expect(ScanResult.safeParse({ ...DEMO_RESULTS[0], repurpose: [idea, idea, idea, idea] }).success).toBe(false);
   });
 

@@ -24,7 +24,17 @@ const JAR: ScanResult = {
   fairy: "glass",
   recyclable: "yes",
   howToRecycle: ["Rinse it out."],
-  repurpose: [{ title: "Fairy lantern", steps: "Add a battery tea light." }],
+  repurpose: [
+    {
+      title: "Fairy lantern",
+      summary: "A glowing jar lantern.",
+      difficulty: "easy",
+      minutes: 15,
+      supplies: ["Battery tea light", "Twine"],
+      steps: ["Drop in a battery tea light.", "Wrap twine around the neck."],
+      safety: null,
+    },
+  ],
   caution: null,
   confidence: "high",
 };
@@ -89,6 +99,15 @@ describe("analyzeItem with Gemini", () => {
     delete withoutCaution.caution;
     mockFetch.mockResolvedValue(geminiReply(JSON.stringify(withoutCaution)));
     expect(await analyzeItem({ image: "QUJD" })).toEqual(JAR);
+  });
+
+  it("accepts an idea that leaves out safety and supplies", async () => {
+    const idea: Record<string, unknown> = { ...JAR.repurpose[0], difficulty: "Easy" };
+    delete idea.safety;
+    delete idea.supplies;
+    mockFetch.mockResolvedValue(geminiReply(JSON.stringify({ ...JAR, repurpose: [idea] })));
+    const [result] = (await analyzeItem({ image: "QUJD" })).repurpose;
+    expect(result).toEqual({ ...JAR.repurpose[0], supplies: [], safety: null });
   });
 
   it("falls back to the latest Flash model when the configured one is retired", async () => {

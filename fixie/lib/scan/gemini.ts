@@ -131,10 +131,22 @@ function fillMissingFields(input: unknown): unknown {
   const record: Record<string, unknown> = { ...(input as Record<string, unknown>) };
   for (const field of NULLABLE_FIELDS) record[field] ??= null;
   record.howToRecycle ??= [];
-  record.repurpose ??= [];
+  record.repurpose = Array.isArray(record.repurpose)
+    ? record.repurpose.map(fillIdeaFields)
+    : (record.repurpose ?? []);
   for (const field of ENUM_FIELDS) {
     const value = record[field];
     if (typeof value === "string") record[field] = value.trim().toLowerCase();
   }
+  return record;
+}
+
+/** Inside each idea, a missing safety line means "no risk" and missing supplies means none. */
+function fillIdeaFields(idea: unknown): unknown {
+  if (typeof idea !== "object" || idea === null || Array.isArray(idea)) return idea;
+  const record: Record<string, unknown> = { ...(idea as Record<string, unknown>) };
+  record.safety ??= null;
+  record.supplies ??= [];
+  if (typeof record.difficulty === "string") record.difficulty = record.difficulty.trim().toLowerCase();
   return record;
 }

@@ -31,7 +31,7 @@ export function IdeaCard({ ideas, number }: IdeaCardProps): React.JSX.Element {
             Idea {index + 1} of {ideas.length}
           </p>
           <h3 className="mt-1 font-display text-xl leading-tight font-semibold">{idea.title}</h3>
-          <p className="mt-1.5 text-sm leading-relaxed text-lichen/85">{idea.steps}</p>
+          <p className="mt-1.5 text-sm leading-relaxed text-lichen/85">{idea.summary}</p>
         </div>
       </div>
       {ideas.length > 1 && (
