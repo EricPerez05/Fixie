@@ -1,0 +1,52 @@
+# ── Dependencies ──────────────────────────────
+/node_modules
+/.pnp
+.pnp.*
+.pnpm-store/
+
+# ── Next.js build output ──────────────────────
+/.next/
+/out/
+/build
+next-env.d.ts
+*.tsbuildinfo
+
+# ── Environment variables ─────────────────────
+# SECURITY: real keys live in .env.local and must never be committed.
+.env
+.env*.local
+.env.development
+.env.production
+# The template IS committed: it lists every var name with empty values.
+!.env.example
+
+# ── Vercel ────────────────────────────────────
+.vercel
+
+# ── Testing ───────────────────────────────────
+/coverage
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
+# ── Local scan photos ─────────────────────────
+# Photos taken while testing can contain faces, mail or addresses.
+/test-photos/
+
+# ── Logs ──────────────────────────────────────
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# ── OS and editor files ───────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+*.pem
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
