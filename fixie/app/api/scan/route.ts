@@ -1,6 +1,7 @@
 import { analyzeItem } from "@/lib/scan/analyze";
 import { ScanRequest } from "@/lib/scan/schema";
 import { pickDemoResult } from "@/lib/scan/demo-results";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
@@ -9,8 +10,16 @@ export const runtime = "nodejs";
 // Must stay above the SDK timeout set in analyze.ts.
 export const maxDuration = 30;
 
-// TODO (build order step 6): rate-limit ahead of parsing.
 export async function POST(req: Request): Promise<Response> {
+  // SECURITY: rate-limit before parsing so abuse costs us as little as possible.
+  const limit = await checkRateLimit(req);
+  if (!limit.ok) {
+    return Response.json(
+      { error: "rate_limited" },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfterSeconds) } },
+    );
+  }
+
   const parsed = ScanRequest.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
     return Response.json({ error: "invalid_request" }, { status: 400 });
