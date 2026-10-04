@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { markSeen, readSeenCount } from "@/hooks/use-grove";
 import { countRecyclable, type GroveEntry } from "@/lib/grove/entries";
+import type { GroveStatus } from "@/lib/grove/store";
 import { layoutGrove, type GroveLayout } from "@/lib/grove/layout";
 import { Icon } from "@/components/ui/icon";
 import { formatDate, GroveTree } from "./grove-tree";
@@ -14,6 +15,10 @@ interface GroveScreenProps {
   onScan: () => void;
   /** Only passed in development: buttons to plant or clear branches without scanning. */
   devTools?: { addSamples: (count: number) => void; clear: () => void };
+  status: GroveStatus;
+  /** True when the Grove syncs to the server, not just this phone. */
+  isRemote: boolean;
+  onRetry: () => void;
 }
 
 interface Measured {
@@ -30,7 +35,15 @@ interface Measured {
  * the tree gets taller with every scan, so it has to. Only the tree moves; the
  * header and bottom nav stay put. It opens at the crown, on the newest branch.
  */
-export function GroveScreen({ entries, onOpenEntry, onScan, devTools }: GroveScreenProps): React.JSX.Element {
+export function GroveScreen({
+  entries,
+  onOpenEntry,
+  onScan,
+  devTools,
+  status,
+  isRemote,
+  onRetry,
+}: GroveScreenProps): React.JSX.Element {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLElement>(null);
   const footerRef = useRef<HTMLElement>(null);
@@ -103,7 +116,9 @@ export function GroveScreen({ entries, onOpenEntry, onScan, devTools }: GroveScr
             <p className="mt-0.5 font-display text-sm font-semibold text-lichen/80">
               {first ? `First scan: ${first.result.item}` : "Every scan you log grows a branch"}
             </p>
-            <p className="mt-3 text-xs text-lichen/55">Saved on this phone only</p>
+            <p className="mt-3 text-xs text-lichen/55">
+              {isRemote ? "Saved privately to your Grove" : "Saved on this phone only"}
+            </p>
           </footer>
         </div>
       </div>
@@ -120,10 +135,24 @@ export function GroveScreen({ entries, onOpenEntry, onScan, devTools }: GroveScr
               {entries.length === 1 ? "branch" : "branches"} ·{" "}
               <b className="font-bold text-honey-light tabular-nums">{recyclable}</b> recyclable
             </>
+          ) : status === "loading" ? (
+            "Gathering your Grove…"
           ) : (
             "Scans you log grow here"
           )}
         </p>
+        {status === "error" && (
+          <p role="status" className="pointer-events-auto mx-auto mt-2 flex max-w-xs items-center justify-center gap-2 text-xs text-lichen/80">
+            {entries.length > 0 ? "Couldn't sync. Showing what this phone remembers." : "Couldn't reach your Grove."}
+            <button
+              type="button"
+              onClick={onRetry}
+              className="min-h-11 rounded-full px-2 font-bold text-honey-light underline underline-offset-4"
+            >
+              Try again
+            </button>
+          </p>
+        )}
       </header>
 
       {isScrolledDown && (

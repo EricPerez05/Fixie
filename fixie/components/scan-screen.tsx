@@ -242,11 +242,10 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
                 onScan={openCamera}
                 // Plant branches without scanning while building the Grove. The
                 // condition is inlined at build time, so production never ships it.
-                devTools={
-                  process.env.NODE_ENV === "development"
-                    ? { addSamples: grove.addSamples, clear: grove.clear }
-                    : undefined
-                }
+                devTools={process.env.NODE_ENV === "development" ? grove.devTools : undefined}
+                status={grove.status}
+                isRemote={grove.isRemote}
+                onRetry={grove.refresh}
               />
               <BottomNav
                 active="grove"

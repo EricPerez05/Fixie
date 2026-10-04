@@ -19,7 +19,7 @@ vi.mock("@upstash/ratelimit", () => {
   return { Ratelimit };
 });
 
-import { checkRateLimit, resetRateLimiterForTests, SCAN_LIMIT } from "@/lib/rate-limit";
+import { checkRateLimit, GROVE_POLICY, resetRateLimiterForTests, SCAN_LIMIT } from "@/lib/rate-limit";
 
 function scanFrom(ip: string): Request {
   return new Request("http://localhost/api/scan", {
@@ -96,5 +96,27 @@ describe("checkRateLimit with Upstash", () => {
     vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "");
     resetRateLimiterForTests();
     await expect(checkRateLimit(scanFrom("1.2.3.4"))).rejects.toThrow(/UPSTASH_REDIS_REST_TOKEN/);
+  });
+});
+
+describe("checkRateLimit with a named policy", () => {
+  beforeEach(() => {
+    vi.stubEnv("UPSTASH_REDIS_REST_URL", "");
+    vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "");
+    resetRateLimiterForTests();
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("counts each policy separately, so scanning doesn't use up Grove requests", async () => {
+    for (let i = 0; i <= SCAN_LIMIT; i++) await checkRateLimit(scanFrom("1.2.3.4"));
+    expect((await checkRateLimit(scanFrom("1.2.3.4"))).ok).toBe(false);
+    expect(await checkRateLimit(scanFrom("1.2.3.4"), GROVE_POLICY)).toEqual({ ok: true });
+  });
+
+  it(`allows ${GROVE_POLICY.limit} Grove requests a minute`, async () => {
+    for (let i = 0; i < GROVE_POLICY.limit; i++) {
+      expect(await checkRateLimit(scanFrom("1.2.3.4"), GROVE_POLICY)).toEqual({ ok: true });
+    }
+    expect((await checkRateLimit(scanFrom("1.2.3.4"), GROVE_POLICY)).ok).toBe(false);
   });
 });
