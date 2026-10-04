@@ -198,3 +198,35 @@ describe("RemoteGroveStore.refresh", () => {
     }
   });
 });
+
+describe("RemoteGroveStore.remove", () => {
+  it("deletes on the server and drops the branch, treating an already-gone entry as removed", async () => {
+    for (const status of [204, 404]) {
+      const api = fakeApi([entry("a")]);
+      const store = createRemoteGroveStore({
+        local: createLocalGroveStore(),
+        fetchImpl: vi.fn(async (url: RequestInfo | URL, init?: RequestInit) =>
+          init?.method === "DELETE" ? new Response(null, { status }) : api.fetchImpl(url, init),
+        ),
+      });
+      store.subscribe(() => undefined);
+      await settle();
+      expect(await store.remove("a")).toBe(true);
+      expect(store.getSnapshot().entries).toEqual([]);
+    }
+  });
+
+  it("keeps the branch and reports failure when the server can't delete it", async () => {
+    const api = fakeApi([entry("a")]);
+    const store = createRemoteGroveStore({
+      local: createLocalGroveStore(),
+      fetchImpl: vi.fn(async (url: RequestInfo | URL, init?: RequestInit) =>
+        init?.method === "DELETE" ? json({ error: "server" }, 502) : api.fetchImpl(url, init),
+      ),
+    });
+    store.subscribe(() => undefined);
+    await settle();
+    expect(await store.remove("a")).toBe(false);
+    expect(store.getSnapshot().entries).toHaveLength(1);
+  });
+});

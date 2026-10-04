@@ -23,7 +23,7 @@ import { CameraOrb } from "./camera/camera-orb";
 import { CameraView } from "./camera/camera-view";
 import { PermissionFallback } from "./camera/permission-fallback";
 import { GroveScreen } from "./grove/grove-screen";
-import type { LogControl } from "./result/log-to-grove";
+import type { LogControl, RemoveControl, RemoveStatus } from "./result/log-to-grove";
 import { RecentChip } from "./result/recent-chip";
 import { Intro } from "./onboarding/intro";
 import { IntroQuestions } from "./onboarding/intro-questions";
@@ -61,12 +61,15 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
   const grove = useGrove();
   const [tab, setTab] = useState<NavTab>("home");
   const grovePhotos = useGrovePhotos(grove.entries, tab === "grove");
-  const { recent, setRecent, markLogged } = useRecentResult();
+  const { recent, setRecent, markLogged, forgetEntry } = useRecentResult();
   // The result in the open card, with where it came from. Separate from
   // `recent`: reopening a Grove branch shows a result without replacing it.
   const [shown, setShown] = useState<RecentResult | null>(null);
 
   const [logState, setLogState] = useState<LogState | null>(null);
+  const [removeState, setRemoveState] = useState<{ entryId: string; status: Exclude<RemoveStatus, "idle"> } | null>(
+    null,
+  );
   // The latest scan's thumbnail, for its polaroid. Memory only: it is stored
   // nowhere until the user taps Log, and the next scan replaces it.
   const [thumbnail, setThumbnail] = useState<{ id: string; base64: string } | null>(null);
@@ -195,6 +198,34 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
     }
   }
 
+  async function removeShown(): Promise<void> {
+    const target = shown;
+    const entryId = target?.entryId;
+    if (!target || !entryId || removeState?.status === "removing") return;
+    setRemoveState({ entryId, status: "removing" });
+    const isRemoved = await grove.remove(entryId);
+    if (!isRemoved) {
+      log.warn("grove.remove_failed");
+      setRemoveState({ entryId, status: "error" });
+      return;
+    }
+    setRemoveState(null);
+    forgetEntry(entryId);
+    // A branch opened from the Grove has nothing left to show; a fresh scan
+    // goes back to "Log to Grove" (with its photo, if still in memory).
+    if (target.source === "grove") scanAgain();
+    else setShown((current) => (current?.entryId === entryId ? { ...current, entryId: null } : current));
+  }
+
+  function removalFor(entryId: string): RemoveControl {
+    return {
+      status: removeState?.entryId === entryId ? removeState.status : "idle",
+      onAsk: () => setRemoveState({ entryId, status: "confirming" }),
+      onConfirm: () => void removeShown(),
+      onCancel: () => setRemoveState(null),
+    };
+  }
+
   function viewGrove(): void {
     scanAgain();
     camera.stop();
@@ -204,7 +235,7 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
   function logControlFor(current: RecentResult | null): LogControl | undefined {
     if (!current) return undefined;
     const base = { hasPhoto: thumbnail?.id === current.id, onLog: () => void logShown(), onViewGrove: viewGrove };
-    if (current.entryId !== null) return { ...base, status: "logged" };
+    if (current.entryId !== null) return { ...base, status: "logged", removal: removalFor(current.entryId) };
     // SAFETY: examples and unidentified results never get a Log button.
     if (!canLog(current)) return undefined;
     if (logState?.id !== current.id) return { ...base, status: "idle" };
@@ -217,6 +248,7 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
   // clears the card but keeps `recent`, so Home can offer to reopen it.
   function scanAgain(): void {
     setCaptureError(null);
+    setRemoveState(null);
     scanner.reset();
     void camera.videoRef.current?.play().catch(() => undefined);
   }

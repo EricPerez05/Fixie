@@ -13,6 +13,9 @@ the app keeps the Grove on the device, exactly as before.
 - **Photos:** the private `grove-photos` bucket, one JPEG thumbnail per entry
   at `{user_id}/{entry_id}.jpg`. Storage RLS limits each user to their own
   folder. The app only ever hands out short-lived signed URLs.
+- **Retention:** entries and photos are kept until the user removes the
+  entry from its result card ("Remove", which deletes the row and its photo).
+  Nothing expires on its own.
 - **Keys:** only the project URL and anon key are used. The service-role key
   bypasses RLS and is never needed; don't add it.
 

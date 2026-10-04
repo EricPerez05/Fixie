@@ -50,6 +50,15 @@ export function markSeen(count: number): void {
   }
 }
 
+async function removeEntry(id: string): Promise<boolean> {
+  const activeStore = getStore();
+  const isRemoved = await activeStore.remove(id);
+  // Keep the seen count within the Grove, or the next logged branch would
+  // count as already seen and skip its grow animation.
+  if (isRemoved) markSeen(Math.min(readSeenCount(), activeStore.getSnapshot().entries.length));
+  return isRemoved;
+}
+
 export interface UseGrove {
   /** Oldest first. */
   entries: readonly GroveEntry[];
@@ -58,6 +67,8 @@ export interface UseGrove {
   isRemote: boolean;
   /** Saves a result as a new branch. Resolves with the entry, or why it failed; never rejects. */
   log: (request: GroveLogRequest) => Promise<LogOutcome>;
+  /** Removes an entry and its photo ("un-log"). Resolves false if it couldn't; never rejects. */
+  remove: (id: string) => Promise<boolean>;
   refresh: () => void;
   /** Development helpers; only for the local Grove. */
   devTools?: { addSamples: (count: number) => void; clear: () => void };
@@ -76,6 +87,7 @@ export function useGrove(): UseGrove {
     status,
     isRemote: isRemoteConfigured,
     log: (request) => getStore().log(request),
+    remove: removeEntry,
     refresh: () => void getStore().refresh(),
     devTools:
       activeStore && !activeStore.isRemote

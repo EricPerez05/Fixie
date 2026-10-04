@@ -53,11 +53,18 @@ function markLogged(id: string, entryId: string): void {
   if (current?.id === id) write({ ...current, entryId });
 }
 
+/** Records that a Grove entry was removed, so the recent result no longer claims to be in the Grove. */
+function forgetEntry(entryId: string): void {
+  const current = read();
+  if (current?.entryId === entryId) write({ ...current, entryId: null });
+}
+
 export interface UseRecentResult {
   /** The last result the user scanned or tried, or null. */
   recent: RecentResult | null;
   setRecent: (next: RecentResult | null) => void;
   markLogged: (id: string, entryId: string) => void;
+  forgetEntry: (entryId: string) => void;
 }
 
 /**
@@ -68,5 +75,5 @@ export interface UseRecentResult {
 export function useRecentResult(): UseRecentResult {
   // The server snapshot is empty, so the first render matches the server's.
   const recent = useSyncExternalStore(subscribe, read, () => null);
-  return { recent, setRecent, markLogged };
+  return { recent, setRecent, markLogged, forgetEntry };
 }
