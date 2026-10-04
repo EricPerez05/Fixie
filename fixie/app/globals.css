@@ -253,6 +253,40 @@ body {
 }
 
 /*
+ * Polaroids hang from their branch by a string and pivot where it's tied.
+ * --tilt (-8° to 8°, from the entry id) is set inline. A new one drops in and
+ * sways to rest, after its branch has grown and its label popped in.
+ */
+.polaroid-hang {
+  transform: rotate(var(--tilt));
+  transform-origin: 50% 0;
+}
+
+.polaroid-drop {
+  animation: polaroid-drop 1.5s 0.8s cubic-bezier(0.3, 0.7, 0.4, 1) both;
+}
+
+@keyframes polaroid-drop {
+  0% {
+    transform: translateY(-40px) rotate(calc(var(--tilt) - 16deg));
+    opacity: 0;
+  }
+  25% {
+    transform: translateY(0) rotate(calc(var(--tilt) + 12deg));
+    opacity: 1;
+  }
+  50% {
+    transform: rotate(calc(var(--tilt) - 7deg));
+  }
+  72% {
+    transform: rotate(calc(var(--tilt) + 3deg));
+  }
+  100% {
+    transform: rotate(var(--tilt));
+  }
+}
+
+/*
  * A slower firefly for the intro: it wanders a loop set per dot with
  * --x1..--y3 over --wander, and blinks on its own --blink rhythm.
  */
@@ -305,6 +339,12 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  /* Rest at its tilt straight away; the shortened animation below would
+     still flash its first frame. */
+  .polaroid-drop {
+    animation: none !important;
+  }
+
   /* Intro fireflies and sparkles hold still rather than flick through one fast loop. */
   .firefly.is-wandering,
   .twinkle {

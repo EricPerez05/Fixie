@@ -16,8 +16,8 @@ export interface UseScan {
   state: ScanState;
   scan: (image: string) => Promise<void>;
   retry: () => Promise<void>;
-  /** Shows a canned result with no camera and no network, for the "try an example" link. */
-  showExample: () => void;
+  /** Shows a canned result with no camera and no network, for the "try an example" link. Returns it. */
+  showExample: () => ScanResult;
   /** Shows a result the user already has, such as a Grove branch, with no network. */
   show: (result: ScanResult) => void;
   reset: () => void;
@@ -47,8 +47,12 @@ export function useScan({
   isDemo?: boolean;
   location?: string;
   preferences?: Preferences | null;
-  /** Called with each validated scan result (not examples or reopened results). */
-  onScanned?: (result: ScanResult) => void;
+  /**
+   * Called with each validated scan result (not examples or reopened
+   * results) and the frame that was scanned (base64 JPEG). The frame is
+   * handed over rather than kept here, so only one photo is ever in memory.
+   */
+  onScanned?: (result: ScanResult, image: string) => void;
 } = {}): UseScan {
   const [state, setState] = useState<ScanState>({ status: "idle" });
   const controllerRef = useRef<AbortController | null>(null);
@@ -93,7 +97,7 @@ export function useScan({
           return;
         }
         setState({ status: "success", result: parsed.data });
-        onScanned?.(parsed.data);
+        onScanned?.(parsed.data, image);
       } catch (error) {
         // A newer scan or reset() aborted this one; that caller owns the state now.
         if (controllerRef.current !== controller) return;
@@ -119,8 +123,10 @@ export function useScan({
     setState({ status: "success", result });
   }, []);
 
-  const showExample = useCallback((): void => {
-    show(DEMO_RESULTS[Math.floor(Math.random() * DEMO_RESULTS.length)]);
+  const showExample = useCallback((): ScanResult => {
+    const example = DEMO_RESULTS[Math.floor(Math.random() * DEMO_RESULTS.length)];
+    show(example);
+    return example;
   }, [show]);
 
   const reset = useCallback((): void => {

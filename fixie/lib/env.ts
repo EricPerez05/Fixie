@@ -94,3 +94,35 @@ export function getUpstashEnv(source: NodeJS.ProcessEnv = process.env): UpstashE
   }
   return { url: parsed.data.UPSTASH_REDIS_REST_URL, token: parsed.data.UPSTASH_REDIS_REST_TOKEN };
 }
+
+// NEXT_PUBLIC_ on purpose: both are safe in the browser. The anon key only
+// grants what row-level security allows, and every Grove table and bucket
+// has RLS. The service-role key is never read anywhere in this app.
+const SupabaseEnvSchema = z.object({
+  NEXT_PUBLIC_SUPABASE_URL: z.url(),
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1),
+});
+
+export interface SupabaseEnv {
+  url: string;
+  anonKey: string;
+}
+
+/**
+ * Reads the Supabase project URL and anon key for the Grove backend.
+ * Returns null when neither is set: the Grove then stays on this device
+ * only. Throws an Error naming the bad keys (never their values) when only
+ * one is set or the URL is malformed, because that is a broken deploy.
+ */
+export function getSupabaseEnv(source: NodeJS.ProcessEnv = process.env): SupabaseEnv | null {
+  const url = source.NEXT_PUBLIC_SUPABASE_URL || undefined;
+  const anonKey = source.NEXT_PUBLIC_SUPABASE_ANON_KEY || undefined;
+  if (!url && !anonKey) return null;
+
+  const parsed = SupabaseEnvSchema.safeParse({ NEXT_PUBLIC_SUPABASE_URL: url, NEXT_PUBLIC_SUPABASE_ANON_KEY: anonKey });
+  if (!parsed.success) {
+    const keys = parsed.error.issues.map((issue) => issue.path.join(".")).join(", ");
+    throw new Error(`Missing or invalid environment variables: ${keys}`);
+  }
+  return { url: parsed.data.NEXT_PUBLIC_SUPABASE_URL, anonKey: parsed.data.NEXT_PUBLIC_SUPABASE_ANON_KEY };
+}

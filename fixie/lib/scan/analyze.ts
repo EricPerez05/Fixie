@@ -4,6 +4,7 @@ import { getGeminiEnv, getScanEnv, getScanProvider } from "@/lib/env";
 import { log } from "@/lib/log";
 import { requestGeminiReport } from "./gemini";
 import { getKnowledgeBlock } from "./knowledge";
+import { enforceSafetyRules } from "./safety";
 import { REPORT_TOOL, REPORT_TOOL_NAME, SYSTEM_PROMPT, buildUserText } from "./prompt";
 import {
   MAX_IDEAS,
@@ -14,6 +15,9 @@ import {
   type Preferences,
   type ScanRequest,
 } from "./schema";
+
+// Re-exported so existing callers and tests keep one import for the scan pipeline.
+export { enforceSafetyRules };
 
 // Timeout sits below the route's maxDuration (30s) so we fail gracefully
 // with UNSURE_RESULT instead of the platform killing the request. One retry
@@ -162,40 +166,6 @@ function trimIdea(idea: unknown): unknown {
     ...(Array.isArray(record.supplies) && { supplies: record.supplies.slice(0, MAX_SUPPLIES) }),
     ...(Array.isArray(record.steps) && { steps: record.steps.slice(0, MAX_STEPS) }),
   };
-}
-
-// Choking hazards for young children. "button" also catches button-cell batteries.
-const SMALL_PARTS = /\b(pebbles?|gravel|beads?|buttons?|marbles?|sequins?)\b/i;
-
-/**
- * Applies the rules the prompt asks for, in code, so they hold even when the
- * model ignores the prompt. Preferences can only remove ideas, never add
- * them back. Pure; never throws.
- */
-export function enforceSafetyRules(result: ScanResult, preferences?: Preferences): ScanResult {
-  // SAFETY: hazardous items must never come back with reuse ideas, even if
-  // the model ignores the prompt instruction. Strip them server-side.
-  if (result.recyclable === "special_dropoff" || result.caution) {
-    result = { ...result, repurpose: [] };
-  }
-  // SAFETY: rule 5 makes the model write a safety line for cut edges, hot
-  // glue and fumes, which are exactly what the kids rule bans. Any idea that
-  // carries one is dropped, so none is better than an unsafe one.
-  // Small loose parts are a choking risk the safety line doesn't cover, so
-  // supplies are checked by name as well.
-  if (preferences?.interests.includes("kids")) {
-    result = {
-      ...result,
-      repurpose: result.repurpose.filter(
-        (idea) => idea.safety === null && !idea.supplies.some((supply) => SMALL_PARTS.test(supply)),
-      ),
-    };
-  }
-  // SAFETY: a low-confidence answer is a guess; don't present it as fact.
-  if (result.confidence === "low" && result.status === "ok") {
-    result = { ...result, status: "unsure" };
-  }
-  return result;
 }
 
 /** Test-only: forget the cached client so env changes take effect. */
