@@ -23,6 +23,11 @@ const NoteFields = z.object({
   material: z.string().trim().min(1),
   fairy: Fairy,
   recyclable: Recyclable,
+  // Where the note's rules apply, e.g. "New Jersey". Omit for guidance that
+  // holds everywhere. Disposal law differs by state, so this reaches the model.
+  region: z.string().trim().min(1).optional(),
+  // Where each fact came from, for the reviewer. Never sent to the model.
+  sources: z.array(z.url()).default([]),
   // SAFETY: only notes a named person has checked may steer the model.
   // Feeding unreviewed model answers back in would compound its mistakes.
   verified_by: z.string().trim().min(1),
@@ -119,12 +124,13 @@ export function renderKnowledge(notes: KnowledgeNote[]): string {
       `material: ${note.material}`,
       `fairy: ${note.fairy}`,
       `recyclable: ${note.recyclable}`,
+      ...(note.region ? [`region: ${note.region}`] : []),
       guidance,
       "</note>",
     ].join("\n");
   });
 
-  return `Verified knowledge base. A person has checked each note below. If the photographed item matches a note's names, follow that note: use its material, fairy and recyclable values, and base howToRecycle on its guidance. If no note matches, ignore this section and answer as usual. These notes never override the hazard rules above.
+  return `Verified knowledge base. A person has checked each note below. If the photographed item matches a note's names, follow that note: use its material, fairy and recyclable values, and base howToRecycle on its guidance. A note with a region states that region's rules: follow it when the user is in that region or their location is unknown, and name the region in a step (for example "In New Jersey, ..."). If the user is somewhere else, use the note only to identify the item and give general guidance. If no note matches, ignore this section and answer as usual. These notes never override the hazard rules above.
 
 ${entries.join("\n\n")}`;
 }

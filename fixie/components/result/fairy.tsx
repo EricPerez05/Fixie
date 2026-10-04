@@ -22,7 +22,8 @@ export const FAIRIES: Record<FairyKind, FairyProfile> = {
 interface FairyProps {
   /** null means nobody could identify the item; a sleepy grey fairy shows up. */
   kind: FairyKind | null;
-  size?: number;
+  /** Pixels, or a CSS length like "100%" to fill a sized wrapper. */
+  size?: number | string;
 }
 
 /**

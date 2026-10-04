@@ -30,7 +30,7 @@ export function LocationField({ value, onChange }: LocationFieldProps): React.JS
         aria-describedby={hintId}
         className="mt-1.5 min-h-11 w-full rounded-xl border border-lichen/30 bg-moss-night/40 px-3.5 text-base text-lichen placeholder:text-lichen/50"
       />
-      <p id={hintId} className="mt-1 text-xs text-lichen/70">
+      <p id={hintId} className="mt-1 text-xs text-lichen/70 [@container(max-height:640px)]:hidden">
         Recycling rules vary by city, so this makes the advice local.
       </p>
     </div>
