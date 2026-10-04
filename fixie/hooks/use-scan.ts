@@ -74,7 +74,7 @@ export function useScan({
           body: JSON.stringify({
             image,
             location: location.trim() || undefined,
-            // A skipped sheet sends nothing, so it shares the plain cache entry.
+            // Skipped questions send nothing, so it shares the plain cache entry.
             preferences: preferences && !isEmptyPreferences(preferences) ? preferences : undefined,
           }),
           signal: controller.signal,

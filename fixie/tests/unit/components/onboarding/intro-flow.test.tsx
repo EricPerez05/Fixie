@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ScanScreen } from "@/components/scan-screen";
 import { EMPTY_PREFERENCES } from "@/hooks/use-preferences";
@@ -140,19 +140,44 @@ describe("first-launch intro", () => {
 });
 
 describe("the wand button", () => {
-  it("still opens the cream sheet, with Cancel", () => {
-    window.localStorage.setItem(PREFERENCES_KEY, JSON.stringify(EMPTY_PREFERENCES));
+  const saved = { space: "balcony", interests: ["plants"], tools: [] };
+
+  function openWand(): void {
+    window.localStorage.setItem(PREFERENCES_KEY, JSON.stringify(saved));
     render(<ScanScreen isDemo={false} />);
     click("Your fairy profile");
+  }
 
-    const sheet = screen.getByRole("dialog", { name: "Tell the fairies about you" });
-    expect(sheet).toHaveClass("bg-cream");
-    expect(within(sheet).getByRole("button", { name: "Save" })).toBeInTheDocument();
-    expect(within(sheet).queryByRole("button", { name: "Skip for now" })).not.toBeInTheDocument();
-    expect(isWelcomeReachable()).toBe(false);
-
-    fireEvent.click(within(sheet).getByRole("button", { name: "Cancel" }));
+  it("opens the green questions with the saved answers ticked, and no Skip", () => {
+    openWand();
+    expect(screen.getByRole("heading", { name: "Tell the fairies about you" })).toHaveFocus();
+    expect(screen.getByRole("radio", { name: "A balcony" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Plants" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Decor" })).not.toBeChecked();
+    expect(screen.queryByRole("button", { name: "Skip for now" })).not.toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(storedPreferences()).toEqual(EMPTY_PREFERENCES);
+    expect(isWelcomeReachable()).toBe(false);
+  });
+
+  it("Back and Escape close it without saving", () => {
+    openWand();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Decor" }));
+    click("Back");
+    expect(screen.queryByRole("heading", { name: "Tell the fairies about you" })).not.toBeInTheDocument();
+    expect(storedPreferences()).toEqual(saved);
+    expect(isWelcomeReachable()).toBe(true);
+
+    click("Your fairy profile");
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("heading", { name: "Tell the fairies about you" })).not.toBeInTheDocument();
+  });
+
+  it("Save updates the answers", () => {
+    openWand();
+    fireEvent.click(screen.getByRole("radio", { name: "A yard" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Needle and thread" }));
+    click("Save");
+    expect(storedPreferences()).toEqual({ space: "yard", interests: ["plants"], tools: ["sewing"] });
+    expect(isWelcomeReachable()).toBe(true);
   });
 });

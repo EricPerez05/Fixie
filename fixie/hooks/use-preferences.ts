@@ -44,7 +44,7 @@ function parseStored(raw: string | null): Preferences | null {
     const parsed = Preferences.safeParse(JSON.parse(raw));
     return parsed.success ? parsed.data : null;
   } catch {
-    // Not JSON at all; same as no answer, and the sheet asks again.
+    // Not JSON at all; same as no answer, and the questions are asked again.
     return null;
   }
 }
@@ -57,8 +57,8 @@ export function isEmptyPreferences(preferences: Preferences): boolean {
 /**
  * The person's space, interests and tools, remembered on this device so
  * upcycling ideas fit them. `preferences` is null until they've answered or
- * skipped the "Tell the fairies about you" sheet; skipping saves an empty
- * profile so the sheet doesn't come back on every visit.
+ * skipped the "Tell the fairies about you" questions; skipping saves an empty
+ * profile so they don't come back on every visit.
  */
 export function usePreferences(): {
   preferences: Preferences | null;
