@@ -6,6 +6,7 @@ export type IconName =
   | "sparkle"
   | "check"
   | "arrow"
+  | "back"
   | "wand"
   | "close"
   | "alert"
@@ -30,6 +31,7 @@ const PATHS: Record<IconName, ReactNode> = {
   sparkle: <path d="M12 2c.7 5.5 4.5 9.3 10 10-5.5.7-9.3 4.5-10 10-.7-5.5-4.5-9.3-10-10 5.5-.7 9.3-4.5 10-10Z" />,
   check: <path d="m5 12.5 4.2 4L19 6.8" />,
   arrow: <path d="M5 12h14m-5-5 5 5-5 5" />,
+  back: <path d="M19 12H5m5 5-5-5 5-5" />,
   wand: (
     <>
       <path d="m5 19 10.5-10.5" />
@@ -64,10 +66,12 @@ interface IconProps {
   name: IconName;
   size?: number;
   className?: string;
+  /** Heavier strokes for small icons inside bold buttons. */
+  strokeWidth?: number;
 }
 
 /** Line icons from the mockup. Decorative: always pair with a visible or aria label. */
-export function Icon({ name, size = 24, className = "" }: IconProps): React.JSX.Element {
+export function Icon({ name, size = 24, className = "", strokeWidth = 1.8 }: IconProps): React.JSX.Element {
   return (
     <svg
       aria-hidden="true"
@@ -76,7 +80,7 @@ export function Icon({ name, size = 24, className = "" }: IconProps): React.JSX.
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth={1.8}
+      strokeWidth={strokeWidth}
       strokeLinecap="round"
       strokeLinejoin="round"
       className={`block shrink-0 ${className}`}

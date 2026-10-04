@@ -4,7 +4,9 @@ import { useCallback, useEffect, useId, useState, useSyncExternalStore } from "r
 import { MotionConfig } from "framer-motion";
 import { useCamera } from "@/hooks/use-camera";
 import { useGrove } from "@/hooks/use-grove";
+import { useIntroSeen } from "@/hooks/use-intro-seen";
 import { useLocation } from "@/hooks/use-location";
+import { useOnboarding } from "@/hooks/use-onboarding";
 import { EMPTY_PREFERENCES, usePreferences } from "@/hooks/use-preferences";
 import { useScan, type ScanState } from "@/hooks/use-scan";
 import type { Preferences } from "@/lib/scan/schema";
@@ -15,6 +17,9 @@ import { CameraOrb } from "./camera/camera-orb";
 import { CameraView } from "./camera/camera-view";
 import { PermissionFallback } from "./camera/permission-fallback";
 import { GroveScreen } from "./grove/grove-screen";
+import { Intro } from "./onboarding/intro";
+import { IntroQuestions } from "./onboarding/intro-questions";
+import { OnboardingLayer } from "./onboarding/onboarding-layer";
 import { ScanButton } from "./camera/scan-button";
 import { UploadButton } from "./camera/upload-button";
 import { ResultCard, ResultHeading, ScanAgainButton } from "./result/result-card";
@@ -39,6 +44,8 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
   const grove = useGrove();
   const scanner = useScan({ isDemo, location, preferences, onScanned: grove.addScan });
   const isClient = useIsClient();
+  const { hasSeenIntro, markIntroSeen } = useIntroSeen();
+  const onboarding = useOnboarding();
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const panelHeadingId = useId();
   const [captureError, setCaptureError] = useState<string | null>(null);
@@ -47,17 +54,22 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
   const { state } = scanner;
   const isCameraLive = camera.status === "active";
   const isPanelOpen = state.status === "success" || state.status === "error" || captureError !== null;
-  // Ask once, on first launch. Demo mode ignores preferences, so it doesn't
-  // interrupt a demo with questions that change nothing.
-  const isFirstTime = isClient && preferences === null && !isDemo;
-  const isSheetOpen = isFirstTime || isEditingProfile;
+  // Brand-new people only: anyone who answered or skipped the questions has
+  // preferences saved. Waits for the browser, since storage can't be read on
+  // the server. Demo mode never shows it, so a demo isn't interrupted.
+  const isIntroShowing = isClient && !isDemo && preferences === null && !hasSeenIntro;
+  const isScreenCovered = isIntroShowing || isEditingProfile;
 
-  const closeSheet = useCallback((): void => {
-    // Skipping saves an empty profile so the sheet doesn't return every visit.
-    if (preferences === null) setPreferences(EMPTY_PREFERENCES);
-    setIsEditingProfile(false);
-  }, [preferences, setPreferences]);
+  // Saving or skipping the intro's questions both end the intro for good.
+  const finishIntro = useCallback(
+    (value: Preferences): void => {
+      setPreferences(value);
+      markIntroSeen();
+    },
+    [setPreferences, markIntroSeen],
+  );
 
+  const closeSheet = useCallback((): void => setIsEditingProfile(false), []);
   const saveProfile = useCallback(
     (value: Preferences): void => {
       setPreferences(value);
@@ -128,8 +140,8 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
       {/* On short screens (under 640px of app height) the home screen drops its
           two secondary lines so everything still fits without scrolling. */}
       <main className="relative h-full w-full overflow-clip [container-type:size] bg-moss-deep bg-[radial-gradient(circle_at_50%_42%,color-mix(in_srgb,var(--fern)_25%,transparent),transparent_34%)] text-lichen">
-        {/* "contents" keeps the layout as is; inert keeps focus inside the open sheet. */}
-        <div inert={isSheetOpen} className="contents">
+        {/* "contents" keeps the layout as is; inert keeps focus inside the intro or the open sheet. */}
+        <div inert={isScreenCovered} className="contents">
         <CameraView videoRef={camera.videoRef} isVisible={isCameraLive} />
 
         {isCameraLive ? (
@@ -236,14 +248,21 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
         </Panel>
         </div>
 
-        {isSheetOpen && (
-          <ProfileSheet
-            initial={preferences}
-            isFirstTime={preferences === null}
-            onSave={saveProfile}
-            onDismiss={closeSheet}
-          />
+        {isIntroShowing && (
+          <OnboardingLayer>
+            {onboarding.view === "intro" ? (
+              <Intro slide={onboarding.slide} onGoToSlide={onboarding.goToSlide} onOpenQuestions={onboarding.openQuestions} />
+            ) : (
+              <IntroQuestions
+                onBack={onboarding.backToIntro}
+                onSave={finishIntro}
+                onSkip={() => finishIntro(EMPTY_PREFERENCES)}
+              />
+            )}
+          </OnboardingLayer>
         )}
+
+        {isEditingProfile && <ProfileSheet initial={preferences} onSave={saveProfile} onDismiss={closeSheet} />}
 
         <p aria-live="polite" className="sr-only">
           {announcement(state)}
