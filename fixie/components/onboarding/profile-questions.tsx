@@ -5,18 +5,22 @@ import type { Preferences } from "@/lib/scan/schema";
 import { PROFILE_DESCRIPTION, PROFILE_TITLE, ProfileForm } from "../ui/profile-form";
 import { PrimaryButton, TextButton } from "./onboarding-buttons";
 
-interface IntroQuestionsProps {
+interface ProfileQuestionsProps {
+  /** The answers to start from: none on first launch, the saved ones when editing. */
+  initial: Preferences | null;
+  /** "Back": to the last intro screen, or out of editing without saving. */
   onBack: () => void;
   onSave: (preferences: Preferences) => void;
-  onSkip: () => void;
+  /** First launch only: "Skip for now". Editing has just Back. */
+  onSkip?: () => void;
 }
 
 /**
- * "Tell the fairies about you" as the last step of the first-launch intro:
- * full screen on green, with the options as chips and Save pinned below.
- * The questions themselves come from the shared ProfileForm.
+ * "Tell the fairies about you", full screen on green with the options as
+ * chips and Save below. Both the last step of the first-launch intro and the
+ * wand button's "edit your answers" use it. Escape works like Back.
  */
-export function IntroQuestions({ onBack, onSave, onSkip }: IntroQuestionsProps): React.JSX.Element {
+export function ProfileQuestions({ initial, onBack, onSave, onSkip }: ProfileQuestionsProps): React.JSX.Element {
   const formId = useId();
   const headingId = useId();
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -25,21 +29,28 @@ export function IntroQuestions({ onBack, onSave, onSkip }: IntroQuestionsProps):
     headingRef.current?.focus({ preventScroll: true });
   }, []);
 
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent): void {
+      if (event.key === "Escape") onBack();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onBack]);
+
   return (
     <section aria-labelledby={headingId} className="relative flex h-full flex-col">
       <div className="relative z-10 flex shrink-0 items-center justify-between px-4 pt-[calc(var(--safe-top)+0.5rem)]">
         <TextButton isBack onClick={onBack}>
           Back
         </TextButton>
-        <TextButton onClick={onSkip}>Skip for now</TextButton>
+        {onSkip && <TextButton onClick={onSkip}>Skip for now</TextButton>}
       </div>
 
       {/* Sized to fit without scrolling; overflow is only a fallback for very short screens. */}
       <div className="min-h-0 flex-1 overflow-y-auto px-6 pt-[clamp(0.25rem,1.5cqh,1rem)]">
         <ProfileForm
           id={formId}
-          look="chips"
-          initial={null}
+          initial={initial}
           onSave={onSave}
           header={
             <header className="text-center">

@@ -18,8 +18,8 @@ import { CameraView } from "./camera/camera-view";
 import { PermissionFallback } from "./camera/permission-fallback";
 import { GroveScreen } from "./grove/grove-screen";
 import { Intro } from "./onboarding/intro";
-import { IntroQuestions } from "./onboarding/intro-questions";
 import { OnboardingLayer } from "./onboarding/onboarding-layer";
+import { ProfileQuestions } from "./onboarding/profile-questions";
 import { ScanButton } from "./camera/scan-button";
 import { UploadButton } from "./camera/upload-button";
 import { ResultCard, ResultHeading, ScanAgainButton } from "./result/result-card";
@@ -29,7 +29,6 @@ import { InspectingOverlay } from "./ui/inspecting-overlay";
 import { LocationField } from "./ui/location-field";
 import { Panel } from "./ui/panel";
 import { PetalShower } from "./ui/petal-shower";
-import { ProfileSheet } from "./ui/profile-sheet";
 import { TopBar } from "./ui/top-bar";
 
 interface ScanScreenProps {
@@ -69,7 +68,7 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
     [setPreferences, markIntroSeen],
   );
 
-  const closeSheet = useCallback((): void => setIsEditingProfile(false), []);
+  const stopEditingProfile = useCallback((): void => setIsEditingProfile(false), []);
   const saveProfile = useCallback(
     (value: Preferences): void => {
       setPreferences(value);
@@ -140,7 +139,7 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
       {/* On short screens (under 640px of app height) the home screen drops its
           two secondary lines so everything still fits without scrolling. */}
       <main className="relative h-full w-full overflow-clip [container-type:size] bg-moss-deep bg-[radial-gradient(circle_at_50%_42%,color-mix(in_srgb,var(--fern)_25%,transparent),transparent_34%)] text-lichen">
-        {/* "contents" keeps the layout as is; inert keeps focus inside the intro or the open sheet. */}
+        {/* "contents" keeps the layout as is; inert keeps focus inside the intro or the open questions. */}
         <div inert={isScreenCovered} className="contents">
         <CameraView videoRef={camera.videoRef} isVisible={isCameraLive} />
 
@@ -253,7 +252,8 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
             {onboarding.view === "intro" ? (
               <Intro slide={onboarding.slide} onGoToSlide={onboarding.goToSlide} onOpenQuestions={onboarding.openQuestions} />
             ) : (
-              <IntroQuestions
+              <ProfileQuestions
+                initial={null}
                 onBack={onboarding.backToIntro}
                 onSave={finishIntro}
                 onSkip={() => finishIntro(EMPTY_PREFERENCES)}
@@ -262,7 +262,12 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
           </OnboardingLayer>
         )}
 
-        {isEditingProfile && <ProfileSheet initial={preferences} onSave={saveProfile} onDismiss={closeSheet} />}
+        {/* The wand button: the same green questions, starting from the saved answers. */}
+        {isEditingProfile && (
+          <OnboardingLayer>
+            <ProfileQuestions initial={preferences} onBack={stopEditingProfile} onSave={saveProfile} />
+          </OnboardingLayer>
+        )}
 
         <p aria-live="polite" className="sr-only">
           {announcement(state)}
