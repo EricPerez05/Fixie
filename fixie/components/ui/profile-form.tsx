@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CraftTool, Interest, Space, type Preferences } from "@/lib/scan/schema";
-import { EMPTY_PREFERENCES } from "@/hooks/use-preferences";
+import { CraftTool, EMPTY_PREFERENCES, Interest, Space, type Preferences } from "@/lib/scan/schema";
 
 export const PROFILE_TITLE = "Tell the fairies about you";
 export const PROFILE_DESCRIPTION =
@@ -17,13 +16,13 @@ interface ProfileFormProps {
   header: React.ReactNode;
 }
 
-const SPACE_LABEL: Record<Space, string> = {
+export const SPACE_LABEL: Record<Space, string> = {
   indoors: "Indoors only",
   balcony: "A balcony",
   yard: "A yard",
 };
 
-const INTEREST_LABEL: Record<Interest, string> = {
+export const INTEREST_LABEL: Record<Interest, string> = {
   plants: "Plants",
   organizing: "Organizing",
   decor: "Decor",
@@ -31,7 +30,7 @@ const INTEREST_LABEL: Record<Interest, string> = {
   kids: "Making with kids",
 };
 
-const TOOL_LABEL: Record<CraftTool, string> = {
+export const TOOL_LABEL: Record<CraftTool, string> = {
   scissors_tape: "Scissors and tape",
   basic_tools: "Hammer and nails",
   glue_paint: "Glue and paint",

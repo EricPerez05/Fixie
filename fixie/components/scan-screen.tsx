@@ -2,17 +2,19 @@
 
 import { useCallback, useEffect, useId, useState, useSyncExternalStore } from "react";
 import { MotionConfig } from "framer-motion";
+import { useAccount } from "@/hooks/use-account";
 import { useCamera } from "@/hooks/use-camera";
 import { useGrove } from "@/hooks/use-grove";
 import { useIntroSeen } from "@/hooks/use-intro-seen";
 import { useLocation } from "@/hooks/use-location";
 import { useOnboarding } from "@/hooks/use-onboarding";
-import { EMPTY_PREFERENCES, usePreferences } from "@/hooks/use-preferences";
+import { usePreferences } from "@/hooks/use-preferences";
 import { useScan, type ScanState } from "@/hooks/use-scan";
-import type { Preferences } from "@/lib/scan/schema";
+import { EMPTY_PREFERENCES, type Preferences } from "@/lib/scan/schema";
 import { captureFrame } from "@/lib/camera/capture-frame";
 import { loadImageFile } from "@/lib/camera/load-image";
 import { log } from "@/lib/log";
+import { AccountScreen } from "./account/account-screen";
 import { CameraOrb } from "./camera/camera-orb";
 import { CameraView } from "./camera/camera-view";
 import { PermissionFallback } from "./camera/permission-fallback";
@@ -27,19 +29,27 @@ import { BottomNav, type NavTab } from "./ui/bottom-nav";
 import { Icon } from "./ui/icon";
 import { InspectingOverlay } from "./ui/inspecting-overlay";
 import { LocationField } from "./ui/location-field";
+import { Notice } from "./ui/notice";
 import { Panel } from "./ui/panel";
 import { PetalShower } from "./ui/petal-shower";
 import { TopBar } from "./ui/top-bar";
 
 interface ScanScreenProps {
   isDemo: boolean;
+  /** Set when Google sign-in came back with an error, so we can say so once. */
+  hasSignInFailed?: boolean;
+  /** "account" when returning from Google sign-in, which starts on the Home tab. */
+  initialTab?: NavTab;
 }
 
 /** Composes camera, scan and result. All data access lives in the hooks. */
-export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
+export function ScanScreen({ isDemo, hasSignInFailed = false, initialTab = "start" }: ScanScreenProps): React.JSX.Element {
   const camera = useCamera();
   const { location, setLocation } = useLocation();
   const { preferences, setPreferences } = usePreferences();
+  // Saving goes through the account: always to this device, and to the account when signed in.
+  const account = useAccount({ preferences, setPreferences, hasSignInFailed });
+  const { savePreferences } = account;
   const grove = useGrove();
   const scanner = useScan({ isDemo, location, preferences, onScanned: grove.addScan });
   const isClient = useIsClient();
@@ -48,7 +58,7 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const panelHeadingId = useId();
   const [captureError, setCaptureError] = useState<string | null>(null);
-  const [tab, setTab] = useState<NavTab>("home");
+  const [tab, setTab] = useState<NavTab>(initialTab);
 
   const { state } = scanner;
   const isCameraLive = camera.status === "active";
@@ -62,21 +72,29 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
   // Saving or skipping the intro's questions both end the intro for good.
   const finishIntro = useCallback(
     (value: Preferences): void => {
-      setPreferences(value);
+      savePreferences(value);
       markIntroSeen();
     },
-    [setPreferences, markIntroSeen],
+    [savePreferences, markIntroSeen],
   );
 
   const stopEditingProfile = useCallback((): void => setIsEditingProfile(false), []);
   const saveProfile = useCallback(
     (value: Preferences): void => {
-      setPreferences(value);
+      savePreferences(value);
       setIsEditingProfile(false);
     },
-    [setPreferences],
+    [savePreferences],
   );
   const editProfile = (): void => setIsEditingProfile(true);
+
+  // Coming back from Google lands on ?view=account; drop it so a reload starts as usual.
+  useEffect(() => {
+    if (initialTab === "start") return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("view");
+    window.history.replaceState(null, "", url);
+  }, [initialTab]);
 
   // Move focus to the result heading so screen readers and keyboards land on
   // the answer instead of the now-hidden shutter button.
@@ -120,13 +138,13 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
   function goHome(): void {
     scanAgain();
     camera.stop();
-    setTab("home");
+    setTab("start");
   }
 
-  // The camera and its permission fallback belong to Home, so leave the Grove
-  // first; otherwise a denied camera would show nothing from the Grove.
+  // The camera and its permission fallback belong to the start screen, so leave
+  // the Grove or Home first; otherwise a denied camera would show nothing there.
   function openCamera(): void {
-    setTab("home");
+    setTab("start");
     void camera.start();
   }
 
@@ -169,17 +187,17 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
             )}
           </>
         ) : (
-          tab === "home" && (camera.status === "denied" || camera.status === "unavailable") ? (
+          tab === "start" && (camera.status === "denied" || camera.status === "unavailable") ? (
             <div className="flex h-full flex-col">
               <TopBar tone="dark" isDemo={isDemo} onEditProfile={editProfile} />
               <div className="flex min-h-0 flex-1 flex-col justify-[safe_center] px-6 pb-[calc(5.5rem+var(--safe-bottom))]">
                 <PermissionFallback reason={camera.status} onFile={onFile} onRetry={() => void camera.start()} />
               </div>
               <BottomNav
-                active="home"
+                active="start"
                 onScan={openCamera}
                 onGrove={() => setTab("grove")}
-                onHome={goHome}
+                onAccount={() => setTab("account")}
                 isScanBusy={false}
               />
             </div>
@@ -201,7 +219,24 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
                 active="grove"
                 onScan={openCamera}
                 onGrove={() => setTab("grove")}
-                onHome={goHome}
+                onAccount={() => setTab("account")}
+                isScanBusy={camera.status === "requesting"}
+              />
+            </div>
+          ) : tab === "account" ? (
+            <div className="relative h-full">
+              <AccountScreen
+                account={account.account}
+                preferences={preferences}
+                onSignIn={() => void account.signIn()}
+                onSignOut={() => void account.signOut()}
+                onEditAnswers={editProfile}
+              />
+              <BottomNav
+                active="account"
+                onScan={openCamera}
+                onGrove={() => setTab("grove")}
+                onAccount={() => setTab("account")}
                 isScanBusy={camera.status === "requesting"}
               />
             </div>
@@ -224,10 +259,10 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
                 onLocationChange={setLocation}
               />
               <BottomNav
-                active="home"
+                active="start"
                 onScan={openCamera}
                 onGrove={() => setTab("grove")}
-                onHome={goHome}
+                onAccount={() => setTab("account")}
                 isScanBusy={camera.status === "requesting"}
               />
             </div>
@@ -268,6 +303,8 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
             <ProfileQuestions initial={preferences} onBack={stopEditingProfile} onSave={saveProfile} />
           </OnboardingLayer>
         )}
+
+        {account.notice && <Notice message={account.notice} onDismiss={account.dismissNotice} />}
 
         <p aria-live="polite" className="sr-only">
           {announcement(state)}

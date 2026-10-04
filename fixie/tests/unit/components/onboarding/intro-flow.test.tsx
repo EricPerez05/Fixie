@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ScanScreen } from "@/components/scan-screen";
-import { EMPTY_PREFERENCES } from "@/hooks/use-preferences";
+import { EMPTY_PREFERENCES } from "@/lib/scan/schema";
 
 const PREFERENCES_KEY = "fixie.preferences";
 const INTRO_KEY = "fixie.introSeen";
@@ -179,5 +179,28 @@ describe("the wand button", () => {
     click("Save");
     expect(storedPreferences()).toEqual({ space: "yard", interests: ["plants"], tools: ["sewing"] });
     expect(isWelcomeReachable()).toBe(true);
+  });
+});
+
+describe("the Home tab", () => {
+  it("opens the account screen, and its answers edit and save through the green questions", () => {
+    window.localStorage.setItem(PREFERENCES_KEY, JSON.stringify(EMPTY_PREFERENCES));
+    render(<ScanScreen isDemo={false} />);
+    click("Home");
+    expect(screen.getByRole("heading", { name: "Your answers" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Home" })).toHaveAttribute("aria-current", "page");
+
+    click("Answer the questions");
+    fireEvent.click(screen.getByRole("radio", { name: "A yard" }));
+    click("Save");
+    expect(storedPreferences()).toEqual({ space: "yard", interests: [], tools: [] });
+    // Back on Home, with the new answer shown.
+    expect(screen.getByText("A yard")).toBeInTheDocument();
+  });
+
+  it("starts on Home when coming back from Google sign-in", () => {
+    window.localStorage.setItem(PREFERENCES_KEY, JSON.stringify(EMPTY_PREFERENCES));
+    render(<ScanScreen isDemo={false} initialTab="account" />);
+    expect(screen.getByRole("heading", { name: "Your answers" })).toBeInTheDocument();
   });
 });

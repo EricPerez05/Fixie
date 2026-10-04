@@ -1,16 +1,17 @@
 import type { IconName } from "./icon";
 import { Icon } from "./icon";
 
-export type NavTab = "grove" | "home";
+/** "start" is the camera orb screen, which no tab in the bar stands for. */
+export type NavTab = "start" | "grove" | "account";
 
 interface BottomNavProps {
-  /** The screen being shown, highlighted in the bar. */
+  /** The screen being shown, highlighted in the bar when it has a tab. */
   active: NavTab;
   /** Opens the camera, same as the big orb. */
   onScan: () => void;
   onGrove: () => void;
-  /** Returns to the start screen. */
-  onHome: () => void;
+  /** "Home": your account and your answers to the fairies. */
+  onAccount: () => void;
   /** True while the camera permission prompt is open, so a second tap can't stack requests. */
   isScanBusy: boolean;
 }
@@ -24,7 +25,7 @@ interface BottomNavProps {
  * Floating, rounded navigation bubble near the bottom of the screen:
  * Grove on the left, a raised camera button in the middle, Home on the right.
  */
-export function BottomNav({ active, onScan, onGrove, onHome, isScanBusy }: BottomNavProps): React.JSX.Element {
+export function BottomNav({ active, onScan, onGrove, onAccount, isScanBusy }: BottomNavProps): React.JSX.Element {
   return (
     <nav
       aria-label="Main"
@@ -44,7 +45,7 @@ export function BottomNav({ active, onScan, onGrove, onHome, isScanBusy }: Botto
           <Icon name="camera" size={26} />
         </button>
 
-        <TabButton icon="home" label="Home" isActive={active === "home"} onClick={onHome} />
+        <TabButton icon="home" label="Home" isActive={active === "account"} onClick={onAccount} />
       </div>
     </nav>
   );
