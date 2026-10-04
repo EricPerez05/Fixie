@@ -49,6 +49,11 @@
   --fairy-electronic: #f0d36e;
   --fairy-mixed: #d6d0c4;
 
+  /* Petal shower on the start screen: a dusty pink that sits with the gold. */
+  --blossom: #eaa9bb;
+  --blossom-light: #f6d3dc;
+  --blossom-deep: #c97b93;
+
   /* Desktop phone frame chrome (titanium edge, glass bezel). */
   --device-edge-light: #e6deef;
   --device-edge: #b8accb;
@@ -100,6 +105,10 @@
   --color-fairy-electronic: var(--fairy-electronic);
   --color-fairy-mixed: var(--fairy-mixed);
 
+  --color-blossom: var(--blossom);
+  --color-blossom-light: var(--blossom-light);
+  --color-blossom-deep: var(--blossom-deep);
+
   --color-device-edge-light: var(--device-edge-light);
   --color-device-edge: var(--device-edge);
   --color-device-edge-dark: var(--device-edge-dark);
@@ -142,7 +151,65 @@ body {
   }
 }
 
+/* A second path, so neighbouring fireflies don't all float the same way. */
+.firefly-side {
+  animation-name: firefly-drift-side;
+}
+
+@keyframes firefly-drift-side {
+  50% {
+    transform: translate(-7px, -3px);
+    opacity: 0.4;
+  }
+}
+
+/*
+ * Petal shower: each blossom falls from above the screen to below it while its
+ * inner element sways and turns. Per-blossom timing comes in as custom
+ * properties from PetalShower. cqh is the app screen's height (main is a size
+ * container), so the fall always spans the full screen.
+ */
+.blossom-fall {
+  position: absolute;
+  top: -48px;
+  animation: blossom-fall var(--fall-time) linear var(--fall-delay) infinite;
+  pointer-events: none;
+}
+
+.blossom-sway {
+  display: block;
+  width: 100%;
+  height: 100%;
+  animation: blossom-sway var(--sway-time) ease-in-out var(--fall-delay) infinite alternate;
+}
+
+@keyframes blossom-fall {
+  to {
+    transform: translateY(calc(100cqh + 96px));
+  }
+}
+
+@keyframes blossom-sway {
+  from {
+    transform: translateX(calc(var(--drift) * -1)) rotate(-25deg);
+  }
+  to {
+    transform: translateX(var(--drift)) rotate(35deg);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  /* Stop blossoms outright and rest them on screen; the shortened animation
+     below would otherwise end every fall off the bottom edge. */
+  .blossom-fall {
+    animation: none !important;
+    top: var(--rest);
+  }
+
+  .blossom-sway {
+    animation: none !important;
+  }
+
   *,
   *::before,
   *::after {
