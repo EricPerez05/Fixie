@@ -28,10 +28,16 @@ aliases: [pizza carton]      # other names the model might use
 material: Corrugated cardboard
 fairy: paper                 # glass | paper | metal | plastic | textile | organic | electronic | mixed
 recyclable: "no"             # "yes" | "no" | special_dropoff  (quote yes/no)
+region: New Jersey           # optional: where these rules apply (shown to the model)
+sources: [https://...]       # optional: where the facts came from (never shown to the model)
 verified_by: Your Name       # required in items/
 ```
 
 The body below the frontmatter is plain guidance, up to 1,500 characters. Keep it to short, factual steps.
+
+## Regions
+
+Notes with `region: New Jersey` describe New Jersey law. The model follows them when the user is in that region or their location is unknown, and names the region in its steps. For users known to be elsewhere, it uses the note only to identify the item. The app doesn't send a location yet, so for now regional notes apply to everyone.
 
 ## Rules
 
