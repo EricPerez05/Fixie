@@ -47,6 +47,6 @@ export const config = {
   // Pages only. The scan route is stateless and the callback sets its own
   // session, so neither needs a refresh; static files never do.
   matcher: [
-    "/((?!_next/static|_next/image|api/scan|auth/callback|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!_next/static|_next/image|api/scan|auth/callback|favicon.ico|manifest.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

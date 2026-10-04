@@ -28,6 +28,10 @@ export const metadata: Metadata = {
   title: "Fixie",
   description:
     "Point your camera at junk. A fairy tells you what it is, how to recycle it, and how to give it a second life.",
+  applicationName: "Fixie",
+  // iPhone "Add to Home Screen": open full screen, with the status bar over
+  // the green so the safe-area padding already in place keeps content clear.
+  appleWebApp: { capable: true, title: "Fixie", statusBarStyle: "black-translucent" },
 };
 
 export const viewport: Viewport = {
