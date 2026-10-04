@@ -1,4 +1,5 @@
 import { Icon } from "./icon";
+import { Wordmark } from "./wordmark";
 
 interface TopBarProps {
   /** "dark" over the forest-green scan screens, "light" over cream results. */
@@ -20,31 +21,16 @@ export function TopBar({ tone, isDemo, onHome, isOverlay = false, onEditProfile 
       ? "border-b border-lichen/10"
       : "border-b border-ink/10";
 
-  const brand = (
-    <>
-      <span
-        className={`grid h-9 w-9 -rotate-6 place-items-center rounded-[50%_50%_48%_52%] ${
-          isDark ? "bg-glimmer text-moss-deep" : "bg-moss text-glimmer"
-        }`}
-      >
-        <Icon name="leaf" size={22} className="rotate-6" />
-      </span>
-      <span className={`font-display text-2xl font-bold tracking-tight ${isDark ? "text-lichen" : "text-ink"}`}>
-        Fixie
-      </span>
-    </>
-  );
-
   return (
     <header
       className={`relative z-10 flex h-[calc(4.75rem+var(--safe-top))] shrink-0 items-center gap-3 px-5 pt-[var(--safe-top)] ${surface}`}
     >
       {onHome ? (
-        <button type="button" onClick={onHome} aria-label="Fixie, back to start" className="flex min-h-11 items-center gap-2">
-          {brand}
+        <button type="button" onClick={onHome} aria-label="Fixie, back to start" className="flex min-h-11 shrink-0 items-center">
+          <Wordmark tone={tone} isDecorative />
         </button>
       ) : (
-        <p className="flex items-center gap-2">{brand}</p>
+        <Wordmark tone={tone} className="shrink-0" />
       )}
       {isDemo && (
         <p
