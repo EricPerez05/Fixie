@@ -96,6 +96,29 @@ describe("POST /api/scan", () => {
     expect(await response.json()).toEqual({ error: "server_error" });
   });
 
+  it("accepts requests with and without preferences, and passes them to the model", async () => {
+    const preferences = { space: "yard", interests: ["plants"], tools: ["basic_tools"] };
+    mockAnalyze.mockReset();
+    mockAnalyze.mockResolvedValue(UNSURE_RESULT);
+    expect((await POST(post({ image: "QUJD" }, { isDemo: false }))).status).toBe(200);
+    expect((await POST(post({ image: "QUJD", preferences }, { isDemo: false }))).status).toBe(200);
+    expect(mockAnalyze.mock.calls[1][0].preferences).toEqual(preferences);
+  });
+
+  it("returns 400 for bad preferences without calling the model", async () => {
+    mockAnalyze.mockClear();
+    const bad = [
+      { space: "moon", interests: [], tools: [] },
+      { space: null, interests: ["plants", "plants"], tools: [] },
+      { space: null, interests: [], tools: ["chainsaw"] },
+      "balcony",
+    ];
+    for (const preferences of bad) {
+      expect((await POST(post({ image: "QUJD", preferences }, { isDemo: false }))).status).toBe(400);
+    }
+    expect(mockAnalyze).not.toHaveBeenCalled();
+  });
+
   it("answers a repeat of the same photo from the cache without calling the model again", async () => {
     const jar: ScanResult = { ...UNSURE_RESULT, status: "ok", item: "Glass jar", confidence: "high" };
     mockAnalyze.mockReset();

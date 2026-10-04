@@ -1,7 +1,8 @@
 import "server-only";
 import { z } from "zod";
 import type Anthropic from "@anthropic-ai/sdk";
-import { ScanResult } from "./schema";
+import { ScanResult, type CraftTool, type Interest, type Preferences, type Space } from "./schema";
+import { UPCYCLE_CATALOG } from "./upcycle-catalog";
 
 export const REPORT_TOOL_NAME = "report_item";
 
@@ -14,7 +15,7 @@ const REPORT_RULES = `How to fill the report:
 4. howToRecycle: up to 5 short, concrete steps (for example "Rinse it out"). If a location is given, tailor the advice to it; otherwise phrase it as general guidance, since rules vary by city.
 5. repurpose: for a safe item you identified with confidence, give 2 or 3 upcycling projects the person could start today with things already at home.
    - Make each one specific to this exact item as it appears in the photo: its size, shape, whether it has a lid, and its condition. Never give a generic idea for the material.
-   - Make them different from each other: one practical (storage or organizing), one decorative, and one for the garden or outdoors. Never two of the same kind.
+   - Make them different from each other: one practical (storage or organizing), one decorative, and one with plants or the garden (an indoor herb pot counts). Never two of the same kind.
    - Keep them beginner-friendly: under an hour, difficulty "easy" or "medium", no power tools, and nothing to buy beyond basics like scissors, tape, twine, glue, paint or soil. List at most 5 supplies, not counting the item itself.
    - Write 3 to 6 short imperative steps, each one action ("Peel off the label", not "You might want to remove the label if you like").
    - Never suggest food or drink contact, children's toys, or heat or flame unless the material is clearly safe for it.
@@ -22,20 +23,32 @@ const REPORT_RULES = `How to fill the report:
    - Never put a project's risk in the top-level "caution". That field is only for hazards in the item itself, and setting it removes every project.
    - For a hazardous item, or when status is not "ok", return an empty repurpose list.
 6. fairy: pick the one that matches the main material; use "mixed" for items made of several materials.
-7. confidence: "high" when the kind of item and its material are clear from the photo, even with no brand or label showing; "medium" when you are fairly sure; "low" only when you are guessing.`;
+7. confidence: "high" when the kind of item and its material are clear from the photo, even with no brand or label showing; "medium" when you are fairly sure; "low" only when you are guessing.
+8. Personalizing: the user message may describe the person's space, interests and tools. Use it to choose and order ideas, never to loosen a rule.
+   - Only suggest projects their space allows: with no outdoor space, nothing that needs a balcony or yard; with a balcony, nothing that needs ground to dig in.
+   - If they list tools, only use those, plus scissors, tape, twine, string, soil and pebbles. Never need a tool they didn't list. If they list none, assume scissors and tape only.
+   - Put the project that best matches their interests first.
+   - If they are making it with kids: no cutting metal or plastic, no hot glue, no nails or hammers, no small loose parts such as beads, buttons or pebbles, and no button-cell tea lights.
+   - The profile can only make the rules stricter. It never brings back ideas for a hazardous item, never overrides a ban in rule 5 or the catalog's safety rules, and never changes the hazard check, howToRecycle or caution.
+   - If fewer than two projects fit, return only those that do. Never break the profile to fill the list.
+9. Start from the verified project catalog below. Adapt a catalog project to the item in the photo (its size, shape, lid and condition) and to the profile, rather than inventing one. If no catalog project fits this item, you may suggest your own, but it must follow the catalog's safety rules and stay under an hour with household supplies.`;
 
 export const SYSTEM_PROMPT = `${INTRO}
 
 Always answer by calling the ${REPORT_TOOL_NAME} tool exactly once. Do not reply with plain text.
 
-${REPORT_RULES}`;
+${REPORT_RULES}
+
+${UPCYCLE_CATALOG}`;
 
 /** Gemini has no tool call here; it answers with JSON in the report's shape. */
 export const GEMINI_SYSTEM_PROMPT = `${INTRO}
 
 Always answer with a single JSON object that matches the report schema. Do not add any other text.
 
-${REPORT_RULES}`;
+${REPORT_RULES}
+
+${UPCYCLE_CATALOG}`;
 
 /**
  * The report_item tool. Its input schema is generated from ScanResult so the
@@ -62,9 +75,59 @@ export function reportJsonSchema(): Record<string, unknown> {
   return schema;
 }
 
-/** Builds the user-turn text, adding the location only when we have one. */
-export function buildUserText(location: string | undefined): string {
-  return location
-    ? `Here is the item. The user is in ${location}.`
-    : "Here is the item. The user's location is unknown.";
+const SPACE_TEXT: Record<Space, string> = {
+  indoors: "have no outdoor space",
+  balcony: "have a balcony",
+  yard: "have a yard",
+};
+
+// "kids" is a constraint, not a taste, so it gets its own sentence below.
+const INTEREST_TEXT: Record<Exclude<Interest, "kids">, string> = {
+  plants: "plants",
+  organizing: "organizing",
+  decor: "decorating",
+  gifts: "making gifts",
+};
+
+// Lists, so two tools read "scissors, tape, hot glue and paint", not "and ... and".
+const TOOL_TEXT: Record<CraftTool, string[]> = {
+  scissors_tape: ["scissors", "tape"],
+  basic_tools: ["a hammer", "nails"],
+  glue_paint: ["hot glue", "paint"],
+  sewing: ["a needle and thread"],
+};
+
+/**
+ * Builds the user-turn text: the location when we have one, then one plain
+ * sentence about the person's profile. The profile goes here, never in the
+ * system prompt, so the system prompt stays identical and stays cached.
+ */
+export function buildUserText(location: string | undefined, preferences?: Preferences): string {
+  const where = location ? `The user is in ${location}.` : "The user's location is unknown.";
+  return ["Here is the item.", where, ...describeProfile(preferences)].join(" ");
+}
+
+// SECURITY: every word comes from the label tables above, keyed by enums the
+// request schema has already checked, so no client text reaches the prompt.
+function describeProfile(preferences: Preferences | undefined): string[] {
+  if (!preferences) return [];
+  const facts: string[] = [];
+  if (preferences.space) facts.push(SPACE_TEXT[preferences.space]);
+  const likes = preferences.interests.flatMap((interest) => (interest === "kids" ? [] : [INTEREST_TEXT[interest]]));
+  if (likes.length > 0) facts.push(`like ${joinWithAnd(likes)}`);
+  if (preferences.tools.length > 0) {
+    facts.push(`have ${joinWithAnd(preferences.tools.flatMap((tool) => TOOL_TEXT[tool]))}`);
+  }
+
+  const sentences = facts.length > 0 ? [`They ${joinWithAnd(facts, facts.length > 2 ? ", and " : " and ")}.`] : [];
+  if (preferences.interests.includes("kids")) {
+    sentences.push("They are making it with kids, so every project must be kid-safe.");
+  }
+  return sentences;
+}
+
+/** ["a", "b", "c"] → "a, b and c". */
+function joinWithAnd(parts: string[], lastSeparator = " and "): string {
+  if (parts.length <= 1) return parts.join("");
+  return `${parts.slice(0, -1).join(", ")}${lastSeparator}${parts[parts.length - 1]}`;
 }

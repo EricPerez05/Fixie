@@ -5,7 +5,15 @@ import { log } from "@/lib/log";
 import { requestGeminiReport } from "./gemini";
 import { getKnowledgeBlock } from "./knowledge";
 import { REPORT_TOOL, REPORT_TOOL_NAME, SYSTEM_PROMPT, buildUserText } from "./prompt";
-import { MAX_IDEAS, MAX_STEPS, MAX_SUPPLIES, ScanResult, UNSURE_RESULT, type ScanRequest } from "./schema";
+import {
+  MAX_IDEAS,
+  MAX_STEPS,
+  MAX_SUPPLIES,
+  ScanResult,
+  UNSURE_RESULT,
+  type Preferences,
+  type ScanRequest,
+} from "./schema";
 
 // Timeout sits below the route's maxDuration (30s) so we fail gracefully
 // with UNSURE_RESULT instead of the platform killing the request. One retry
@@ -45,7 +53,7 @@ export async function analyzeItem(input: ScanRequest): Promise<ScanResult> {
   const gemini = getScanProvider() === "gemini" ? getGeminiEnv() : null;
   if (gemini) {
     const raw = await requestGeminiReport(input, gemini, getKnowledgeBlock());
-    return raw === null ? UNSURE_RESULT : validateReport(raw);
+    return raw === null ? UNSURE_RESULT : validateReport(raw, input.preferences);
   }
 
   const { client, model } = getClient();
@@ -66,7 +74,7 @@ export async function analyzeItem(input: ScanRequest): Promise<ScanResult> {
           role: "user",
           content: [
             { type: "image", source: { type: "base64", media_type: "image/jpeg", data: input.image } },
-            { type: "text", text: buildUserText(input.location) },
+            { type: "text", text: buildUserText(input.location, input.preferences) },
           ],
         },
       ],
@@ -99,11 +107,11 @@ export async function analyzeItem(input: ScanRequest): Promise<ScanResult> {
     return UNSURE_RESULT;
   }
 
-  return validateReport(toolUse.input);
+  return validateReport(toolUse.input, input.preferences);
 }
 
 /** Checks a model's report against the contract, then applies the safety rules. */
-function validateReport(raw: unknown): ScanResult {
+function validateReport(raw: unknown, preferences: Preferences | undefined): ScanResult {
   const parsed = ScanResult.safeParse(trimLists(raw));
   if (!parsed.success) {
     log.warn("scan.invalid_model_output", {
@@ -113,7 +121,7 @@ function validateReport(raw: unknown): ScanResult {
     });
     return UNSURE_RESULT;
   }
-  return enforceSafetyRules(parsed.data);
+  return enforceSafetyRules(parsed.data, preferences);
 }
 
 /**
@@ -158,13 +166,20 @@ function trimIdea(idea: unknown): unknown {
 
 /**
  * Applies the rules the prompt asks for, in code, so they hold even when the
- * model ignores the prompt. Pure; never throws.
+ * model ignores the prompt. Preferences can only remove ideas, never add
+ * them back. Pure; never throws.
  */
-export function enforceSafetyRules(result: ScanResult): ScanResult {
+export function enforceSafetyRules(result: ScanResult, preferences?: Preferences): ScanResult {
   // SAFETY: hazardous items must never come back with reuse ideas, even if
   // the model ignores the prompt instruction. Strip them server-side.
   if (result.recyclable === "special_dropoff" || result.caution) {
     result = { ...result, repurpose: [] };
+  }
+  // SAFETY: rule 5 makes the model write a safety line for cut edges, hot
+  // glue and fumes, which are exactly what the kids rule bans. Any idea that
+  // carries one is dropped, so none is better than an unsafe one.
+  if (preferences?.interests.includes("kids")) {
+    result = { ...result, repurpose: result.repurpose.filter((idea) => idea.safety === null) };
   }
   // SAFETY: a low-confidence answer is a guess; don't present it as fact.
   if (result.confidence === "low" && result.status === "ok") {

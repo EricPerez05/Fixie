@@ -22,7 +22,7 @@ interface GeminiResponse {
  */
 export async function requestGeminiReport(input: ScanRequest, env: GeminiEnv, knowledge: string): Promise<unknown> {
   const system = knowledge ? `${GEMINI_SYSTEM_PROMPT}\n\n${knowledge}` : GEMINI_SYSTEM_PROMPT;
-  const userText = buildUserText(input.location);
+  const userText = buildUserText(input.location, input.preferences);
 
   let model = env.model;
   let response = await post(env, model, buildBody(input, system, userText, true));
