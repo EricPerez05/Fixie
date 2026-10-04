@@ -7,6 +7,7 @@ import { planSignIn } from "@/lib/profile/merge";
 import type { Preferences } from "@/lib/scan/schema";
 import { getBrowserSupabase } from "@/lib/supabase/browser";
 import { getSupabaseConfig } from "@/lib/supabase/config";
+import { log } from "@/lib/log";
 
 export type AccountState =
   /** Supabase isn't configured, so sign-in is hidden and nothing changes. */
@@ -28,6 +29,8 @@ export interface UseAccount {
 
 const MESSAGES = {
   signInFailed: "Sign-in didn't finish. You can keep scanning, or try again.",
+  googleAccountTaken:
+    "That Google account already has a Fixie account. Tap Sign in with Google again to switch this device to it.",
   syncFailed: "Couldn't reach your account. Your answers are saved on this device.",
 } as const;
 
@@ -56,15 +59,20 @@ export function useAccount({
   preferences,
   setPreferences,
   hasSignInFailed = false,
+  isGoogleAccountTaken = false,
 }: {
   preferences: Preferences | null;
   setPreferences: (value: Preferences) => void;
   hasSignInFailed?: boolean;
+  /** Linking failed because this Google account already belongs to another Fixie user. */
+  isGoogleAccountTaken?: boolean;
 }): UseAccount {
   const [account, setAccount] = useState<AccountState>(() =>
     getSupabaseConfig() ? { status: "loading" } : { status: "unavailable" },
   );
-  const [notice, setNotice] = useState<string | null>(hasSignInFailed ? MESSAGES.signInFailed : null);
+  const [notice, setNotice] = useState<string | null>(
+    isGoogleAccountTaken ? MESSAGES.googleAccountTaken : hasSignInFailed ? MESSAGES.signInFailed : null,
+  );
   const userId = account.status === "signed_in" ? account.userId : null;
 
   // The sign-in sync reads the device's answers at the moment the account
@@ -75,17 +83,21 @@ export function useAccount({
   }, [preferences]);
 
   useEffect(() => {
-    // Drop ?signin=failed so a reload doesn't repeat the message.
-    if (hasSignInFailed) window.history.replaceState(null, "", window.location.pathname);
-  }, [hasSignInFailed]);
+    // Drop ?signin=… so a reload doesn't repeat the message.
+    if (!hasSignInFailed && !isGoogleAccountTaken) return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete("signin");
+    window.history.replaceState(null, "", url);
+  }, [hasSignInFailed, isGoogleAccountTaken]);
 
   useEffect(() => {
     const supabase = getBrowserSupabase();
     if (!supabase) return;
     // Only set state here: awaiting other auth calls inside this callback can deadlock the client.
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      // The Grove signs every visitor in anonymously; that isn't an account yet.
       setAccount(
-        session
+        session && !session.user.is_anonymous
           ? { status: "signed_in", userId: session.user.id, firstName: firstNameOf(session.user.user_metadata) }
           : { status: "signed_out" },
       );
@@ -119,12 +131,20 @@ export function useAccount({
   const signIn = useCallback(async (): Promise<void> => {
     const supabase = getBrowserSupabase();
     if (!supabase) return;
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo: `${window.location.origin}/auth/callback` },
-    });
+    const options = { redirectTo: `${window.location.origin}/auth/callback` };
+    // An anonymous Grove visitor is upgraded in place, so the branches they
+    // planted stay theirs. If that Google account already exists (signed in
+    // on another device), the callback says so and the next tap signs in to it.
+    const { data } = await supabase.auth.getSession();
+    if (data.session?.user.is_anonymous && !isGoogleAccountTaken) {
+      const { error } = await supabase.auth.linkIdentity({ provider: "google", options });
+      if (!error) return;
+      // Manual linking is off in Supabase, or the link couldn't start: sign in plainly instead.
+      log.warn("auth.link_failed", { reason: error.code ?? error.name });
+    }
+    const { error } = await supabase.auth.signInWithOAuth({ provider: "google", options });
     if (error) setNotice(MESSAGES.signInFailed);
-  }, []);
+  }, [isGoogleAccountTaken]);
 
   const signOut = useCallback(async (): Promise<void> => {
     // The device keeps its copy of the answers, so ideas stay personalized.

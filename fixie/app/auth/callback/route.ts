@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { createServerSupabase } from "@/lib/supabase/server";
+import { getSupabaseEnv } from "@/lib/env";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { log } from "@/lib/log";
 
 /**
@@ -14,12 +15,18 @@ export async function GET(request: Request): Promise<Response> {
   // SECURITY: always this origin's Home tab, where sign-in starts; never a
   // redirect target taken from the query.
   const home = new URL("/?view=account", url.origin);
-  if (!code) return failed(home, "missing_code");
-
-  const supabase = await createServerSupabase();
-  if (!supabase) return failed(home, "not_configured");
+  if (!code) {
+    // Linking an anonymous visitor to a Google account that's already in use
+    // comes back with this code instead; the app then offers a plain sign-in.
+    const errorCode = url.searchParams.get("error_code");
+    return failed(home, errorCode ?? "missing_code", errorCode === "identity_already_exists" ? "taken" : "failed");
+  }
 
   try {
+    // Throws only when the Supabase env vars are half set: a broken deploy, reported as a failed sign-in.
+    const env = getSupabaseEnv();
+    if (!env) return failed(home, "not_configured");
+    const supabase = await createSupabaseServerClient(env);
     const flowId = url.searchParams.get("sb_flow_id");
     const { error } = await supabase.auth.exchangeCodeForSession(code, flowId ? { flowId } : undefined);
     if (error) return failed(home, error.code ?? error.name);
@@ -29,10 +36,10 @@ export async function GET(request: Request): Promise<Response> {
   return NextResponse.redirect(home);
 }
 
-function failed(home: URL, reason: string): Response {
+function failed(home: URL, reason: string, outcome: "failed" | "taken" = "failed"): Response {
   // SECURITY: the reason is an error code, never the auth code or a token.
   log.warn("auth.callback_failed", { reason });
   const target = new URL(home);
-  target.searchParams.set("signin", "failed");
+  target.searchParams.set("signin", outcome);
   return NextResponse.redirect(target);
 }

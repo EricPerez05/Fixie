@@ -1,0 +1,29 @@
+# Supabase CLI config for local development (`supabase start`). Only the
+# settings Fixie depends on are listed; everything else uses the CLI defaults.
+project_id = "fixie"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+
+[db]
+port = 54322
+major_version = 17
+
+[studio]
+enabled = true
+port = 54323
+
+[storage]
+enabled = true
+file_size_limit = "256KiB"
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000"]
+# Fixie has no accounts: every visitor gets an anonymous user, which can be
+# upgraded to a real account later without changing the schema.
+enable_anonymous_sign_ins = true
+enable_signup = true

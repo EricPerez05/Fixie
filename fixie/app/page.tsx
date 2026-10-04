@@ -6,6 +6,7 @@ export default async function Home({ searchParams }: PageProps<"/">): Promise<Re
     <ScanScreen
       isDemo={demo === "1"}
       hasSignInFailed={signin === "failed"}
+      isGoogleAccountTaken={signin === "taken"}
       initialTab={view === "account" ? "account" : "start"}
     />
   );

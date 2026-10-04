@@ -91,3 +91,16 @@ describe("countRecyclable", () => {
     expect(countRecyclable(entries)).toBe(2);
   });
 });
+
+describe("parseGrove safety", () => {
+  it("strips reuse ideas from a stored hazardous entry", () => {
+    const stored = [{ ...entry("hazard"), result: { ...JAR, recyclable: "special_dropoff" } }];
+    const [read] = parseGrove(JSON.stringify(stored));
+    expect(read.result.repurpose).toEqual([]);
+  });
+
+  it("drops a stored entry that the rules now treat as a guess", () => {
+    const stored = [{ ...entry("guess"), result: { ...JAR, confidence: "low" } }];
+    expect(parseGrove(JSON.stringify(stored))).toEqual([]);
+  });
+});

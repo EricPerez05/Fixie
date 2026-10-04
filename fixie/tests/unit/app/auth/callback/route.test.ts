@@ -1,13 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockCreateServerSupabase, mockExchange } = vi.hoisted(() => ({
-  mockCreateServerSupabase: vi.fn(),
+const { mockCreateServerClient, mockGetSupabaseEnv, mockExchange } = vi.hoisted(() => ({
+  mockCreateServerClient: vi.fn(),
+  mockGetSupabaseEnv: vi.fn(),
   mockExchange: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/log", () => ({ log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
-vi.mock("@/lib/supabase/server", () => ({ createServerSupabase: mockCreateServerSupabase }));
+vi.mock("@/lib/env", () => ({ getSupabaseEnv: mockGetSupabaseEnv }));
+vi.mock("@/lib/supabase/server", () => ({ createSupabaseServerClient: mockCreateServerClient }));
 
 import { GET } from "@/app/auth/callback/route";
 
@@ -18,8 +20,10 @@ function callback(query: string): Request {
 describe("GET /auth/callback", () => {
   beforeEach(() => {
     mockExchange.mockReset();
-    mockCreateServerSupabase.mockReset();
-    mockCreateServerSupabase.mockResolvedValue({ auth: { exchangeCodeForSession: mockExchange } });
+    mockCreateServerClient.mockReset();
+    mockCreateServerClient.mockResolvedValue({ auth: { exchangeCodeForSession: mockExchange } });
+    mockGetSupabaseEnv.mockReset();
+    mockGetSupabaseEnv.mockReturnValue({ url: "https://project.supabase.co", anonKey: "anon" });
   });
 
   it("exchanges the code and redirects home on success", async () => {
@@ -55,7 +59,7 @@ describe("GET /auth/callback", () => {
   });
 
   it("redirects home when Supabase isn't configured", async () => {
-    mockCreateServerSupabase.mockResolvedValue(null);
+    mockGetSupabaseEnv.mockReturnValue(null);
     const response = await GET(callback("?code=abc123"));
     expect(response.headers.get("location")).toBe("https://fixie.example/?view=account&signin=failed");
   });
@@ -64,5 +68,19 @@ describe("GET /auth/callback", () => {
     mockExchange.mockResolvedValue({ data: {}, error: null });
     const response = await GET(callback("?code=abc123&next=https://evil.example/"));
     expect(new URL(response.headers.get("location") ?? "").origin).toBe("https://fixie.example");
+  });
+
+  it("flags a Google account that's already in use, so the app can offer a plain sign-in", async () => {
+    const response = await GET(callback("?error=server_error&error_code=identity_already_exists"));
+    expect(response.headers.get("location")).toBe("https://fixie.example/?view=account&signin=taken");
+    expect(mockExchange).not.toHaveBeenCalled();
+  });
+
+  it("reports half-set Supabase env vars as a failed sign-in, not a crash", async () => {
+    mockGetSupabaseEnv.mockImplementation(() => {
+      throw new Error("Missing or invalid environment variables: NEXT_PUBLIC_SUPABASE_ANON_KEY");
+    });
+    const response = await GET(callback("?code=abc123"));
+    expect(response.headers.get("location")).toBe("https://fixie.example/?view=account&signin=failed");
   });
 });

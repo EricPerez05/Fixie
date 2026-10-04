@@ -4,21 +4,29 @@ import { useCallback, useEffect, useId, useState, useSyncExternalStore } from "r
 import { MotionConfig } from "framer-motion";
 import { useAccount } from "@/hooks/use-account";
 import { useCamera } from "@/hooks/use-camera";
-import { useGrove } from "@/hooks/use-grove";
+import { useGrove, useGrovePhotos } from "@/hooks/use-grove";
 import { useIntroSeen } from "@/hooks/use-intro-seen";
 import { useLocation } from "@/hooks/use-location";
 import { useOnboarding } from "@/hooks/use-onboarding";
 import { usePreferences } from "@/hooks/use-preferences";
+import { useRecentResult } from "@/hooks/use-recent-result";
 import { useScan, type ScanState } from "@/hooks/use-scan";
 import { EMPTY_PREFERENCES, type Preferences } from "@/lib/scan/schema";
 import { captureFrame } from "@/lib/camera/capture-frame";
 import { loadImageFile } from "@/lib/camera/load-image";
+import { makeThumbnail } from "@/lib/camera/thumbnail";
+import type { GroveEntry, LogFailure } from "@/lib/grove/entries";
+import { newId } from "@/lib/id";
 import { log } from "@/lib/log";
+import { canLog, isReopenable, type RecentResult, type ResultSource } from "@/lib/scan/recent";
+import type { ScanResult } from "@/lib/scan/schema";
 import { AccountScreen } from "./account/account-screen";
 import { CameraOrb } from "./camera/camera-orb";
 import { CameraView } from "./camera/camera-view";
 import { PermissionFallback } from "./camera/permission-fallback";
 import { GroveScreen } from "./grove/grove-screen";
+import type { LogControl, RemoveControl, RemoveStatus } from "./result/log-to-grove";
+import { RecentChip } from "./result/recent-chip";
 import { Intro } from "./onboarding/intro";
 import { OnboardingLayer } from "./onboarding/onboarding-layer";
 import { ProfileQuestions } from "./onboarding/profile-questions";
@@ -34,31 +42,80 @@ import { Panel } from "./ui/panel";
 import { PetalShower } from "./ui/petal-shower";
 import { TopBar } from "./ui/top-bar";
 
+type LogState = { id: string; status: "logging" } | { id: string; status: "error"; reason: LogFailure };
+
+const LOG_MESSAGES: Record<LogFailure, string> = {
+  not_growable: "Only items the fairies recognised can grow a branch.",
+  rate_limited: "The Grove needs a breather. Wait a minute, then try again.",
+  network: "Couldn't reach your Grove. Check your connection and try again.",
+  server: "Your Grove couldn't save that one. Try again.",
+};
+
 interface ScanScreenProps {
   isDemo: boolean;
   /** Set when Google sign-in came back with an error, so we can say so once. */
   hasSignInFailed?: boolean;
+  /** Set when that Google account already belongs to another Fixie user. */
+  isGoogleAccountTaken?: boolean;
   /** "account" when returning from Google sign-in, which starts on the Home tab. */
   initialTab?: NavTab;
 }
 
 /** Composes camera, scan and result. All data access lives in the hooks. */
-export function ScanScreen({ isDemo, hasSignInFailed = false, initialTab = "start" }: ScanScreenProps): React.JSX.Element {
+export function ScanScreen({
+  isDemo,
+  hasSignInFailed = false,
+  isGoogleAccountTaken = false,
+  initialTab = "start",
+}: ScanScreenProps): React.JSX.Element {
   const camera = useCamera();
   const { location, setLocation } = useLocation();
   const { preferences, setPreferences } = usePreferences();
   // Saving goes through the account: always to this device, and to the account when signed in.
-  const account = useAccount({ preferences, setPreferences, hasSignInFailed });
+  const account = useAccount({ preferences, setPreferences, hasSignInFailed, isGoogleAccountTaken });
   const { savePreferences } = account;
   const grove = useGrove();
-  const scanner = useScan({ isDemo, location, preferences, onScanned: grove.addScan });
+  const [tab, setTab] = useState<NavTab>(initialTab);
+  const grovePhotos = useGrovePhotos(grove.entries, tab === "grove");
+  const { recent, setRecent, markLogged, forgetEntry } = useRecentResult();
+  // The result in the open card, with where it came from. Separate from
+  // `recent`: reopening a Grove branch shows a result without replacing it.
+  const [shown, setShown] = useState<RecentResult | null>(null);
+
+  const [logState, setLogState] = useState<LogState | null>(null);
+  const [removeState, setRemoveState] = useState<{ entryId: string; status: Exclude<RemoveStatus, "idle"> } | null>(
+    null,
+  );
+  // The latest scan's thumbnail, for its polaroid. Memory only: it is stored
+  // nowhere until the user taps Log, and the next scan replaces it.
+  const [thumbnail, setThumbnail] = useState<{ id: string; base64: string } | null>(null);
+
+  // Scanning alone never plants a branch: the user logs it from the card.
+  const onScanned = useCallback(
+    (result: ScanResult, image: string): void => {
+      // A new scan always replaces the recent result, even an unsure one.
+      const next = isReopenable(result) ? newRecent(result, "scan") : null;
+      setRecent(next);
+      setShown(next);
+      setThumbnail(null);
+      if (next && canLog(next)) {
+        makeThumbnail(image)
+          .then((base64) => setThumbnail({ id: next.id, base64 }))
+          .catch((error: unknown) => {
+            // The entry can still be logged; its branch just keeps the fruit.
+            log.warn("thumbnail.failed", { reason: error instanceof Error ? error.message : "Unknown" });
+          });
+      }
+    },
+    [setRecent],
+  );
+  const scanner = useScan({ isDemo, location, preferences, onScanned });
   const isClient = useIsClient();
   const { hasSeenIntro, markIntroSeen } = useIntroSeen();
   const onboarding = useOnboarding();
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const panelHeadingId = useId();
   const [captureError, setCaptureError] = useState<string | null>(null);
-  const [tab, setTab] = useState<NavTab>(initialTab);
 
   const { state } = scanner;
   const isCameraLive = camera.status === "active";
@@ -129,8 +186,93 @@ export function ScanScreen({ isDemo, hasSignInFailed = false, initialTab = "star
     }
   }
 
+  function showExample(): void {
+    const next = newRecent(scanner.showExample(), "example");
+    setRecent(next);
+    setShown(next);
+  }
+
+  function openEntry(entry: GroveEntry): void {
+    scanner.show(entry.result);
+    setShown({ id: entry.id, result: entry.result, source: "grove", scannedAt: entry.scannedAt, entryId: entry.id });
+  }
+
+  function reopenRecent(): void {
+    if (!recent) return;
+    scanner.show(recent.result);
+    setShown(recent);
+  }
+
+  async function logShown(): Promise<void> {
+    const target = shown;
+    // Clicks are discrete events, so React has re-rendered (and disabled the
+    // button) before a second tap can land; this check covers any other caller.
+    if (!target || !canLog(target) || (logState?.id === target.id && logState.status === "logging")) return;
+    setLogState({ id: target.id, status: "logging" });
+    const photo = thumbnail?.id === target.id ? thumbnail.base64 : undefined;
+    const outcome = await grove.log({ scannedAt: target.scannedAt, result: target.result, photo });
+    if (outcome.ok) {
+      setLogState(null);
+      // The card may have closed or moved on while saving; only update the copy it was for.
+      setShown((current) => (current?.id === target.id ? { ...current, entryId: outcome.entry.id } : current));
+      markLogged(target.id, outcome.entry.id);
+    } else {
+      log.warn("grove.log_failed", { reason: outcome.reason });
+      setLogState({ id: target.id, status: "error", reason: outcome.reason });
+    }
+  }
+
+  async function removeShown(): Promise<void> {
+    const target = shown;
+    const entryId = target?.entryId;
+    if (!target || !entryId || removeState?.status === "removing") return;
+    setRemoveState({ entryId, status: "removing" });
+    const isRemoved = await grove.remove(entryId);
+    if (!isRemoved) {
+      log.warn("grove.remove_failed");
+      setRemoveState({ entryId, status: "error" });
+      return;
+    }
+    setRemoveState(null);
+    forgetEntry(entryId);
+    // A branch opened from the Grove has nothing left to show; a fresh scan
+    // goes back to "Log to Grove" (with its photo, if still in memory).
+    if (target.source === "grove") scanAgain();
+    else setShown((current) => (current?.entryId === entryId ? { ...current, entryId: null } : current));
+  }
+
+  function removalFor(entryId: string): RemoveControl {
+    return {
+      status: removeState?.entryId === entryId ? removeState.status : "idle",
+      onAsk: () => setRemoveState({ entryId, status: "confirming" }),
+      onConfirm: () => void removeShown(),
+      onCancel: () => setRemoveState(null),
+    };
+  }
+
+  function viewGrove(): void {
+    scanAgain();
+    camera.stop();
+    setTab("grove");
+  }
+
+  function logControlFor(current: RecentResult | null): LogControl | undefined {
+    if (!current) return undefined;
+    const base = { hasPhoto: thumbnail?.id === current.id, onLog: () => void logShown(), onViewGrove: viewGrove };
+    if (current.entryId !== null) return { ...base, status: "logged", removal: removalFor(current.entryId) };
+    // SAFETY: examples and unidentified results never get a Log button.
+    if (!canLog(current)) return undefined;
+    if (logState?.id !== current.id) return { ...base, status: "idle" };
+    return logState.status === "logging"
+      ? { ...base, status: "logging" }
+      : { ...base, status: "error", errorMessage: LOG_MESSAGES[logState.reason] };
+  }
+
+  // Every close route (swipe, backdrop, Escape, the buttons) lands here. It
+  // clears the card but keeps `recent`, so Home can offer to reopen it.
   function scanAgain(): void {
     setCaptureError(null);
+    setRemoveState(null);
     scanner.reset();
     void camera.videoRef.current?.play().catch(() => undefined);
   }
@@ -205,15 +347,16 @@ export function ScanScreen({ isDemo, hasSignInFailed = false, initialTab = "star
             <div className="relative h-full">
               <GroveScreen
                 entries={grove.entries}
-                onOpenEntry={(entry) => scanner.show(entry.result)}
+                onOpenEntry={openEntry}
                 onScan={openCamera}
                 // Plant branches without scanning while building the Grove. The
                 // condition is inlined at build time, so production never ships it.
-                devTools={
-                  process.env.NODE_ENV === "development"
-                    ? { addSamples: grove.addSamples, clear: grove.clear }
-                    : undefined
-                }
+                devTools={process.env.NODE_ENV === "development" ? grove.devTools : undefined}
+                status={grove.status}
+                isRemote={grove.isRemote}
+                onRetry={grove.refresh}
+                photos={grovePhotos.urls}
+                onPhotoError={grovePhotos.onPhotoError}
               />
               <BottomNav
                 active="grove"
@@ -253,7 +396,9 @@ export function ScanScreen({ isDemo, hasSignInFailed = false, initialTab = "star
                 isResuming={camera.status === "paused"}
                 isRequesting={camera.status === "requesting"}
                 onOpenCamera={() => void camera.start()}
-                onExample={scanner.showExample}
+                onExample={showExample}
+                recent={recent}
+                onReopen={reopenRecent}
                 onFile={onFile}
                 location={location}
                 onLocationChange={setLocation}
@@ -278,6 +423,7 @@ export function ScanScreen({ isDemo, hasSignInFailed = false, initialTab = "star
             headingId={panelHeadingId}
             onScanAgain={scanAgain}
             onRetry={() => void scanner.retry()}
+            logControl={logControlFor(shown)}
           />
         </Panel>
         </div>
@@ -322,6 +468,8 @@ function Welcome({
   onFile,
   location,
   onLocationChange,
+  recent,
+  onReopen,
 }: {
   isResuming: boolean;
   isRequesting: boolean;
@@ -330,6 +478,8 @@ function Welcome({
   onFile: (file: File) => void;
   location: string;
   onLocationChange: (value: string) => void;
+  recent: RecentResult | null;
+  onReopen: () => void;
 }): React.JSX.Element {
   // Three rows: above the orb, the orb, below it. The outer rows share the
   // leftover height equally, so the orb sits at the exact middle of the screen.
@@ -338,7 +488,8 @@ function Welcome({
   return (
     <div className="relative grid h-full grid-rows-[1fr_auto_1fr] px-6 text-center">
       {/* Top padding keeps this row's content clear of the floating header. */}
-      <section className="self-end px-2 pt-[calc(4.75rem+var(--safe-top))]">
+      <section className="flex min-w-0 justify-center self-end px-2 pt-[calc(4.75rem+var(--safe-top))] pb-[clamp(8px,2.5cqh,24px)]">
+        {recent && <RecentChip recent={recent} onReopen={onReopen} />}
       </section>
 
       {/* iOS only grants the camera from a user gesture, so we never auto-start. */}
@@ -374,21 +525,27 @@ function Welcome({
   );
 }
 
+function newRecent(result: ScanResult, source: ResultSource): RecentResult {
+  return { id: newId(), result, source, scannedAt: new Date().toISOString(), entryId: null };
+}
+
 function PanelBody({
   state,
   captureError,
   headingId,
   onScanAgain,
   onRetry,
+  logControl,
 }: {
   state: ScanState;
   captureError: string | null;
   headingId: string;
   onScanAgain: () => void;
   onRetry: () => void;
+  logControl: LogControl | undefined;
 }): React.JSX.Element | null {
   if (state.status === "success") {
-    return <ResultCard result={state.result} headingId={headingId} onClose={onScanAgain} />;
+    return <ResultCard result={state.result} headingId={headingId} onClose={onScanAgain} logControl={logControl} />;
   }
 
   const message = captureError ?? (state.status === "error" ? state.message : null);

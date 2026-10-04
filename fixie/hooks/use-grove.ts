@@ -1,88 +1,37 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
-import { appendEntry, parseGrove, toGroveEntry, type GroveEntry } from "@/lib/grove/entries";
-import { DEMO_RESULTS } from "@/lib/scan/demo-results";
-import type { ScanResult } from "@/lib/scan/schema";
-import { log } from "@/lib/log";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import type { GroveEntry, GroveLogRequest, LogOutcome } from "@/lib/grove/entries";
+import { createLocalGroveStore, type LocalGroveStore } from "@/lib/grove/local-store";
+import { deletePhotos, readPhotoBase64 } from "@/lib/grove/photo-cache";
+import { createRemoteGroveStore } from "@/lib/grove/remote-store";
+import { EMPTY_SNAPSHOT, type GroveStatus, type GroveStore } from "@/lib/grove/store";
 
-const STORAGE_KEY = "fixie.grove.v1";
 const SEEN_KEY = "fixie.grove.seen";
-const EMPTY: readonly GroveEntry[] = [];
 
-const listeners = new Set<() => void>();
-// Parsed once and then kept in step with every write, so getSnapshot returns
-// the same array between changes (useSyncExternalStore requires that). It is
-// also the fallback when storage is blocked: the Grove lasts for this visit.
-let cache: readonly GroveEntry[] | null = null;
+// Inlined at build time. With no Supabase project configured (local dev,
+// previews), the Grove lives on this device only, exactly as before.
+const isRemoteConfigured = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL);
 
-function read(): readonly GroveEntry[] {
-  if (cache === null) {
-    try {
-      cache = parseGrove(window.localStorage.getItem(STORAGE_KEY));
-    } catch {
-      // Private mode or blocked storage: start empty and keep scans in memory.
-      cache = EMPTY;
-    }
-  }
-  return cache;
+// Created on first use, in the browser: both read storage.
+let local: LocalGroveStore | null = null;
+let store: GroveStore | null = null;
+
+function getLocal(): LocalGroveStore {
+  local ??= createLocalGroveStore();
+  return local;
 }
 
-function write(next: readonly GroveEntry[]): void {
-  cache = next;
-  try {
-    if (next.length > 0) window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-    else window.localStorage.removeItem(STORAGE_KEY);
-  } catch (error) {
-    // Quota or blocked storage. The branch still shows for this visit.
-    log.warn("grove.save_failed", { reason: error instanceof Error ? error.name : "Unknown" });
-  }
-  listeners.forEach((listener) => listener());
+function getStore(): GroveStore {
+  store ??= isRemoteConfigured
+    ? createRemoteGroveStore({ local: getLocal(), readLocalPhoto: readPhotoBase64, forgetLocalPhotos: deletePhotos })
+    : getLocal();
+  return store;
 }
 
-function onStorage(event: StorageEvent): void {
-  // Another tab changed the Grove: re-read it on next render.
-  if (event.key !== STORAGE_KEY) return;
-  cache = null;
-  listeners.forEach((listener) => listener());
-}
-
-function subscribe(listener: () => void): () => void {
-  if (listeners.size === 0) window.addEventListener("storage", onStorage);
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-    if (listeners.size === 0) window.removeEventListener("storage", onStorage);
-  };
-}
-
-function newId(): string {
-  // randomUUID only exists in secure contexts; a LAN http:// address isn't one.
-  return typeof crypto.randomUUID === "function"
-    ? crypto.randomUUID()
-    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-}
-
-/** Plants a branch for a scan. Unidentified scans are ignored. */
-function addScan(result: ScanResult): void {
-  const entry = toGroveEntry(result, new Date(), newId());
-  if (entry) write(appendEntry(read(), entry));
-}
-
-/** Dev only: plants `count` branches from the canned demo results. */
-function addSamples(count: number): void {
-  let next = read();
-  for (let i = 0; i < count; i++) {
-    const sample = DEMO_RESULTS[next.length % DEMO_RESULTS.length];
-    const entry = toGroveEntry(sample, new Date(), newId());
-    if (entry) next = appendEntry(next, entry);
-  }
-  write(next);
-}
-
-function clear(): void {
-  write(EMPTY);
-}
+const subscribe = (listener: () => void): (() => void) => getStore().subscribe(listener);
+const getSnapshot = () => getStore().getSnapshot();
+const getServerSnapshot = () => EMPTY_SNAPSHOT;
 
 /** How many branches the user had already seen, so only new ones play the grow animation. */
 export function readSeenCount(): number {
@@ -101,20 +50,97 @@ export function markSeen(count: number): void {
   }
 }
 
+async function removeEntry(id: string): Promise<boolean> {
+  const activeStore = getStore();
+  const isRemoved = await activeStore.remove(id);
+  // Keep the seen count within the Grove, or the next logged branch would
+  // count as already seen and skip its grow animation.
+  if (isRemoved) markSeen(Math.min(readSeenCount(), activeStore.getSnapshot().entries.length));
+  return isRemoved;
+}
+
 export interface UseGrove {
   /** Oldest first. */
   entries: readonly GroveEntry[];
-  addScan: (result: ScanResult) => void;
-  addSamples: (count: number) => void;
-  clear: () => void;
+  status: GroveStatus;
+  /** True when the Grove is kept in Supabase rather than on this device only. */
+  isRemote: boolean;
+  /** Saves a result as a new branch. Resolves with the entry, or why it failed; never rejects. */
+  log: (request: GroveLogRequest) => Promise<LogOutcome>;
+  /** Removes an entry and its photo ("un-log"). Resolves false if it couldn't; never rejects. */
+  remove: (id: string) => Promise<boolean>;
+  refresh: () => void;
+  /** Development helpers; only for the local Grove. */
+  devTools?: { addSamples: (count: number) => void; clear: () => void };
 }
 
 /**
- * The user's Grove: every identified scan, saved on this device only. No
- * accounts and no images; just the results, so a branch can reopen its answer.
+ * The user's Grove: every result they chose to log. Kept in Supabase for an
+ * anonymous user when it's configured, otherwise on this device only.
  */
 export function useGrove(): UseGrove {
   // The server snapshot is empty, so the first render matches the server's.
-  const entries = useSyncExternalStore(subscribe, read, () => EMPTY);
-  return { entries, addScan, addSamples, clear };
+  const { entries, status } = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const activeStore = typeof window === "undefined" ? null : getStore();
+  return {
+    entries,
+    status,
+    isRemote: isRemoteConfigured,
+    log: (request) => getStore().log(request),
+    remove: removeEntry,
+    refresh: () => void getStore().refresh(),
+    devTools:
+      activeStore && !activeStore.isRemote
+        ? { addSamples: (count) => getLocal().addSamples(count), clear: () => getLocal().clear() }
+        : undefined,
+  };
+}
+
+export interface UseGrovePhotos {
+  /** Entry id → a URL the browser can show. Entries without one show their fruit. */
+  urls: ReadonlyMap<string, string>;
+  /** Call when a photo fails to load: it falls back to the fruit, and an expired signed URL is refreshed. */
+  onPhotoError: (id: string) => void;
+}
+
+const NO_PHOTOS: ReadonlyMap<string, string> = new Map();
+
+/**
+ * Photo URLs for the Grove's polaroids: object URLs from IndexedDB for a
+ * local Grove, short-lived signed URLs for a remote one. Only looks them up
+ * while `isEnabled` (the Grove is on screen). Never logs a URL.
+ */
+export function useGrovePhotos(entries: readonly GroveEntry[], isEnabled: boolean): UseGrovePhotos {
+  const [urls, setUrls] = useState<ReadonlyMap<string, string>>(NO_PHOTOS);
+
+  useEffect(() => {
+    if (!isEnabled) return;
+    let isCurrent = true;
+    const activeStore = getStore();
+    void Promise.all(
+      entries.filter((entry) => entry.hasPhoto).map(async (entry) => [entry.id, await activeStore.photoUrl(entry)] as const),
+    ).then((pairs) => {
+      if (!isCurrent) return;
+      setUrls(new Map(pairs.flatMap(([id, url]) => (url ? [[id, url] as const] : []))));
+    });
+    return () => {
+      isCurrent = false;
+    };
+  }, [entries, isEnabled]);
+
+  const onPhotoError = useCallback((id: string): void => {
+    setUrls((current) => {
+      if (!current.has(id)) return current;
+      const next = new Map(current);
+      next.delete(id);
+      return next;
+    });
+    // Remote: usually an expired signed URL, and a fresh sync (throttled in
+    // the store) brings new ones. Local: an object URL won't fix itself, and
+    // re-reading would only hand back the same broken one.
+    const activeStore = getStore();
+    if (activeStore.isRemote) void activeStore.refresh();
+  }, []);
+
+  return { urls: isEnabled ? urls : NO_PHOTOS, onPhotoError };
 }

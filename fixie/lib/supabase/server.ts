@@ -2,22 +2,23 @@ import "server-only";
 import { createServerClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
-import { getSupabaseConfig } from "./config";
+import type { SupabaseEnv } from "@/lib/env";
 
 /**
- * A Supabase client for one server request, reading and writing the auth
- * cookies. Create a new one per request; never share it. Returns null when
- * Supabase isn't configured. Never throws.
+ * A Supabase client acting as the caller, with their session in cookies.
+ * It uses the anon key, so every query runs under row-level security as
+ * that user; nothing here can read another user's Grove.
+ *
+ * Only for route handlers: they are the one place Next lets us write the
+ * refreshed session cookies back.
  */
-export async function createServerSupabase(): Promise<SupabaseClient | null> {
-  const config = getSupabaseConfig();
-  if (!config) return null;
+export async function createSupabaseServerClient(env: SupabaseEnv): Promise<SupabaseClient> {
   const cookieStore = await cookies();
-  return createServerClient(config.url, config.anonKey, {
+  return createServerClient(env.url, env.anonKey, {
     cookies: {
       getAll: () => cookieStore.getAll(),
-      setAll: (cookiesToSet) => {
-        cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options));
+      setAll: (toSet) => {
+        for (const { name, value, options } of toSet) cookieStore.set(name, value, options);
       },
     },
   });
