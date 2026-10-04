@@ -49,6 +49,18 @@
   --fairy-electronic: #f0d36e;
   --fairy-mixed: #d6d0c4;
 
+  /* Grove tab: the night sky behind the tree, its bark and its leaves. */
+  --grove-sky: #123825;
+  --bark-dark: #3e2b1f;
+  --bark-light: #8d6a48;
+  --leaf: #3f7a4f;
+  --leaf-bright: #6f9a63;
+
+  /* Petal shower on the start screen: a dusty pink that sits with the gold. */
+  --blossom: #eaa9bb;
+  --blossom-light: #f6d3dc;
+  --blossom-deep: #c97b93;
+
   /* Desktop phone frame chrome (titanium edge, glass bezel). */
   --device-edge-light: #e6deef;
   --device-edge: #b8accb;
@@ -100,6 +112,16 @@
   --color-fairy-electronic: var(--fairy-electronic);
   --color-fairy-mixed: var(--fairy-mixed);
 
+  --color-grove-sky: var(--grove-sky);
+  --color-bark-dark: var(--bark-dark);
+  --color-bark-light: var(--bark-light);
+  --color-leaf: var(--leaf);
+  --color-leaf-bright: var(--leaf-bright);
+
+  --color-blossom: var(--blossom);
+  --color-blossom-light: var(--blossom-light);
+  --color-blossom-deep: var(--blossom-deep);
+
   --color-device-edge-light: var(--device-edge-light);
   --color-device-edge: var(--device-edge);
   --color-device-edge-dark: var(--device-edge-dark);
@@ -113,7 +135,8 @@ html,
 body {
   background: var(--moss-deep);
   color: var(--ink);
-  /* The camera owns the screen; no rubber-band scroll behind it. */
+  /* The app is one screen: nothing scrolls, and no rubber-band behind the camera. */
+  overflow: hidden;
   overscroll-behavior: none;
 }
 
@@ -141,7 +164,97 @@ body {
   }
 }
 
+/* A second path, so neighbouring fireflies don't all float the same way. */
+.firefly-side {
+  animation-name: firefly-drift-side;
+}
+
+@keyframes firefly-drift-side {
+  50% {
+    transform: translate(-7px, -3px);
+    opacity: 0.4;
+  }
+}
+
+/*
+ * Petal shower: each blossom falls from above the screen to below it while its
+ * inner element sways and turns. Per-blossom timing comes in as custom
+ * properties from PetalShower. cqh is the app screen's height (main is a size
+ * container), so the fall always spans the full screen.
+ */
+.blossom-fall {
+  position: absolute;
+  top: -48px;
+  animation: blossom-fall var(--fall-time) linear var(--fall-delay) infinite;
+  pointer-events: none;
+}
+
+.blossom-sway {
+  display: block;
+  width: 100%;
+  height: 100%;
+  animation: blossom-sway var(--sway-time) ease-in-out var(--fall-delay) infinite alternate;
+}
+
+@keyframes blossom-fall {
+  to {
+    transform: translateY(calc(100cqh + 96px));
+  }
+}
+
+@keyframes blossom-sway {
+  from {
+    transform: translateX(calc(var(--drift) * -1)) rotate(-25deg);
+  }
+  to {
+    transform: translateX(var(--drift)) rotate(35deg);
+  }
+}
+
+/*
+ * Grove: a new branch grows out from the trunk (transform-origin is set
+ * inline at its joint), then its fruit and label pop in. Each plays once, on
+ * mount, so re-renders that move a branch never replay it.
+ */
+.grove-grow {
+  animation: grove-grow 1.1s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes grove-grow {
+  from {
+    transform: scale(0.04);
+    opacity: 0;
+  }
+  40% {
+    opacity: 1;
+  }
+}
+
+.grove-pop {
+  animation: grove-pop 0.6s 0.7s cubic-bezier(0.3, 1.6, 0.5, 1) both;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+@keyframes grove-pop {
+  from {
+    transform: scale(0);
+    opacity: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  /* Stop blossoms outright and rest them on screen; the shortened animation
+     below would otherwise end every fall off the bottom edge. */
+  .blossom-fall {
+    animation: none !important;
+    top: var(--rest);
+  }
+
+  .blossom-sway {
+    animation: none !important;
+  }
+
   *,
   *::before,
   *::after {

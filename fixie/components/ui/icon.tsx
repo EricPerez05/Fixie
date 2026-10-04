@@ -8,7 +8,10 @@ export type IconName =
   | "arrow"
   | "wand"
   | "close"
-  | "alert";
+  | "alert"
+  | "forest"
+  | "home"
+  | "plus";
 
 const PATHS: Record<IconName, ReactNode> = {
   camera: (
@@ -34,6 +37,21 @@ const PATHS: Record<IconName, ReactNode> = {
     </>
   ),
   close: <path d="m6 6 12 12M18 6 6 18" />,
+  forest: (
+    <>
+      <path d="m8 3-5 8h3l-4 7h8" />
+      <path d="m16 2-5 9h3l-5 8h14l-5-8h3l-5-9Z" />
+      <path d="M16 19v3M7 18v3" />
+    </>
+  ),
+  home: (
+    <>
+      <path d="M4 11.5 12 4l8 7.5" />
+      <path d="M6.5 10v9.5h11V10" />
+      <path d="M10 19.5v-5h4v5" />
+    </>
+  ),
+  plus: <path d="M12 5v14M5 12h14" />,
   alert: (
     <>
       <path d="M12 3.5 21.5 20h-19L12 3.5Z" />

@@ -8,12 +8,12 @@ import type { ReactNode } from "react";
  * adds nothing.
  *
  * Keyed on the `desk` variant (wide screen + mouse), not width alone, so a
- * phone in landscape never gets squeezed into a tiny frame. On very short
- * windows the screen keeps a 640px floor and the page scrolls instead.
+ * phone in landscape never gets squeezed into a tiny frame. The phone always
+ * fits the window; the app scales its layout to whatever height it gets.
  */
 export function DeviceFrame({ children }: { children: ReactNode }): React.JSX.Element {
   return (
-    <div className="relative h-dvh w-full desk:flex desk:h-auto desk:min-h-dvh desk:items-center desk:justify-center desk:overflow-hidden desk:bg-linear-145 desk:from-sage-shade desk:via-sage desk:to-sage-shade desk:p-6">
+    <div className="relative h-dvh w-full desk:flex desk:items-center desk:justify-center desk:overflow-hidden desk:bg-linear-145 desk:from-sage-shade desk:via-sage desk:to-sage-shade desk:p-6">
       <Backdrop />
 
       {/* Titanium edge */}
@@ -26,7 +26,7 @@ export function DeviceFrame({ children }: { children: ReactNode }): React.JSX.El
             The screen. On desktop it fakes the insets of a real phone so the
             app keeps its content clear of the island and home indicator.
           */}
-          <div className="relative h-full w-full overflow-hidden desk:h-[min(852px,calc(100dvh-5rem))] desk:min-h-160 desk:w-98.25 desk:rounded-[50px] desk:[--safe-bottom:22px] desk:[--safe-top:48px] desk:[&_*]:[scrollbar-width:none]">
+          <div className="relative h-full w-full overflow-clip desk:h-[min(852px,calc(100dvh-5rem))] desk:w-98.25 desk:rounded-[50px] desk:[--safe-bottom:22px] desk:[--safe-top:48px]">
             {children}
             <div
               aria-hidden="true"
