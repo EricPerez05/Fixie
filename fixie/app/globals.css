@@ -113,7 +113,8 @@ html,
 body {
   background: var(--moss-deep);
   color: var(--ink);
-  /* The camera owns the screen; no rubber-band scroll behind it. */
+  /* The app is one screen: nothing scrolls, and no rubber-band behind the camera. */
+  overflow: hidden;
   overscroll-behavior: none;
 }
 

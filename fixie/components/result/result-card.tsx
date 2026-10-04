@@ -1,8 +1,10 @@
+"use client";
+
+import { useEffect, useId, useRef, useState } from "react";
 import type { Recyclable, ScanResult } from "@/lib/scan/schema";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { Fairy, FAIRIES } from "./fairy";
 import { IdeaCard } from "./idea-card";
-import { SectionTitle } from "./section-title";
 
 interface ResultCardProps {
   result: ScanResult;
@@ -12,33 +14,36 @@ interface ResultCardProps {
 
 const VERDICT: Record<
   Recyclable,
-  { headline: string; detail: string; icon: IconName; badgeClass: string; eyebrow: string; stepsTitle: string }
+  { headline: string; detail: string; icon: IconName; badgeClass: string; stepsTitle: string }
 > = {
   yes: {
     headline: "Yes, it's recyclable!",
     detail: "As long as it's sorted right",
     icon: "check",
     badgeClass: "bg-moss text-glimmer",
-    eyebrow: "Return to the earth",
-    stepsTitle: "Recycle it right",
+    stepsTitle: "Recycle it",
   },
   no: {
     headline: "Not recyclable",
-    detail: "Most places send this to landfill",
+    detail: "This one goes in the trash",
     icon: "close",
     badgeClass: "bg-bark text-lichen",
-    eyebrow: "Where it goes",
-    stepsTitle: "Throw it out right",
+    stepsTitle: "Throw it out",
   },
   special_dropoff: {
     headline: "Needs a special drop-off",
     detail: "Keep it out of your home bins",
     icon: "alert",
     badgeClass: "bg-ember text-lichen",
-    eyebrow: "Hazardous item",
-    stepsTitle: "Drop it off safely",
+    stepsTitle: "Drop it off",
   },
 };
+
+/*
+ * The result fits one screen with no scrolling, down to a ~540px-tall phone.
+ * Sizes use cqh (the panel's height, set as a size container in Panel), so
+ * the same layout tightens on short screens and inside the desktop frame.
+ */
 
 /** The fairy's report for one scan. Pure presentation: no fetching. */
 export function ResultCard({ result, headingId, onClose }: ResultCardProps): React.JSX.Element {
@@ -47,110 +52,219 @@ export function ResultCard({ result, headingId, onClose }: ResultCardProps): Rea
   if (result.status !== "ok" || result.confidence === "low" || !result.item) {
     return <UnsureCard result={result} headingId={headingId} onClose={onClose} />;
   }
+  return <ConfidentResult result={result} item={result.item} headingId={headingId} onClose={onClose} />;
+}
 
+function ConfidentResult({
+  result,
+  item,
+  headingId,
+  onClose,
+}: ResultCardProps & { item: string }): React.JSX.Element {
+  const tabsId = useId();
+  const [tab, setTab] = useState<"steps" | "ideas">("steps");
   const verdict = result.recyclable ? VERDICT[result.recyclable] : null;
+  const stepsTitle = verdict?.stepsTitle ?? "What to do";
   const hasSteps = result.howToRecycle.length > 0;
+  const hasIdeas = result.repurpose.length > 0;
+  // Two sections would overflow a small phone, so they share one slot as tabs.
+  const hasTabs = hasSteps && hasIdeas;
+  const shown = hasTabs ? tab : hasSteps ? "steps" : "ideas";
 
   return (
-    <article className="flex flex-col gap-6">
-      <ResultHeading
-        headingId={headingId}
-        title={result.item}
-        onClose={onClose}
-      />
+    <article className="flex h-full min-h-0 flex-col gap-[clamp(8px,1.8cqh,16px)]">
+      <ResultHeading headingId={headingId} title={item} onClose={onClose} />
 
-      <section className="relative overflow-hidden rounded-[26px] bg-linear-145 from-sage-mist to-cream pb-24">
+      <section className="relative flex shrink-0 items-center gap-3 overflow-hidden rounded-[22px] bg-linear-145 from-sage-mist to-cream p-[clamp(8px,1.6cqh,14px)]">
         <div
           aria-hidden="true"
-          className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,color-mix(in_srgb,var(--glimmer-bright)_55%,transparent),transparent_34%)]"
+          className="pointer-events-none absolute inset-y-0 left-0 w-1/2 bg-[radial-gradient(circle_at_30%_50%,color-mix(in_srgb,var(--glimmer-bright)_55%,transparent),transparent_60%)]"
         />
-        <p className="absolute top-3.5 right-3.5 rounded-full bg-paper/80 px-2.5 py-1.5 text-xs font-bold text-moss">
-          {result.confidence === "high" ? "High" : "Medium"} confidence
-        </p>
-        <div className="relative flex flex-col items-center pt-8">
-          <Fairy kind={result.fairy} size={136} />
-          {result.fairy && (
-            <p className="mt-1 text-sm font-semibold text-ink-soft">
-              {FAIRIES[result.fairy].name}, {FAIRIES[result.fairy].title}
-              {result.material && <span className="font-normal"> · {result.material}</span>}
+        <div className="relative h-[clamp(56px,11cqh,92px)] w-[clamp(56px,11cqh,92px)] shrink-0">
+          <Fairy kind={result.fairy} size="100%" />
+        </div>
+        <div className="relative min-w-0">
+          {verdict && (
+            <p className="flex items-center gap-2 font-display text-[clamp(15px,2.3cqh,17px)] leading-tight font-semibold">
+              <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full ${verdict.badgeClass}`}>
+                <Icon name={verdict.icon} size={14} />
+              </span>
+              {verdict.headline}
             </p>
           )}
+          {verdict && <p className="mt-0.5 text-[clamp(12px,1.8cqh,14px)] text-ink-soft">{verdict.detail}</p>}
+          <p className="mt-1 text-xs text-ink-soft">
+            {result.fairy && <span className="font-semibold">{FAIRIES[result.fairy].name} · </span>}
+            {result.material}
+            {result.material && " · "}
+            {result.confidence === "high" ? "High" : "Medium"} confidence
+          </p>
         </div>
-        {verdict && (
-          <div className="absolute inset-x-4 bottom-4 flex items-center gap-3 rounded-2xl border border-paper/80 bg-paper/90 px-4 py-3 backdrop-blur-sm">
-            <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-full ${verdict.badgeClass}`}>
-              <Icon name={verdict.icon} size={19} />
-            </span>
-            <div>
-              <p className="font-display text-base leading-tight font-semibold">{verdict.headline}</p>
-              <p className="text-sm text-ink-soft">{verdict.detail}</p>
-            </div>
-          </div>
-        )}
       </section>
 
       {result.caution && (
-        <div role="note" className="flex gap-3 rounded-2xl border border-ember/40 bg-ember-soft p-4">
-          <Icon name="alert" size={22} className="mt-0.5 text-ember" />
-          <div>
-            <p className="font-semibold text-ember">Handle with care</p>
-            <p className="mt-1 text-[15px] leading-relaxed">{result.caution}</p>
-          </div>
+        <div role="note" className="flex shrink-0 gap-2.5 rounded-2xl border border-ember/40 bg-ember-soft px-3.5 py-[clamp(8px,1.4cqh,12px)]">
+          <Icon name="alert" size={20} className="mt-0.5 text-ember" />
+          <p className="text-[clamp(13px,1.9cqh,15px)] leading-snug">
+            <span className="font-semibold text-ember">Handle with care. </span>
+            {result.caution}
+          </p>
         </div>
       )}
 
-      {hasSteps && (
-        <section aria-labelledby={`${headingId}-steps`}>
-          <div id={`${headingId}-steps`}>
-            <SectionTitle
-              number="01"
-              eyebrow={verdict?.eyebrow ?? "What to do"}
-              title={verdict?.stepsTitle ?? "What to do with it"}
-              tone="light"
-            />
-          </div>
-          <ol className="overflow-hidden rounded-[19px] border border-ink/10 bg-paper">
-            {result.howToRecycle.map((step, index) => (
-              <li key={step} className="flex items-center gap-3 border-b border-ink/10 px-4 py-3.5 last:border-b-0">
-                <span
-                  aria-hidden="true"
-                  className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-sage font-display text-sm font-bold text-moss"
-                >
-                  {index + 1}
-                </span>
-                <span className="text-[15px] leading-snug font-medium">{step}</span>
-              </li>
-            ))}
-          </ol>
-        </section>
+      {hasTabs ? (
+        <div role="tablist" aria-label="What to do with it" className="flex shrink-0 gap-1 rounded-full bg-sage p-1">
+          <TabButton id={`${tabsId}-steps`} isSelected={tab === "steps"} onSelect={() => setTab("steps")}>
+            {stepsTitle}
+          </TabButton>
+          <TabButton id={`${tabsId}-ideas`} isSelected={tab === "ideas"} onSelect={() => setTab("ideas")}>
+            Reuse it
+          </TabButton>
+        </div>
+      ) : (
+        (hasSteps || hasIdeas) && (
+          <h2 className="shrink-0 font-display text-[clamp(17px,2.6cqh,20px)] leading-tight font-semibold">
+            {hasSteps ? stepsTitle : "Reuse it"}
+          </h2>
+        )
       )}
 
-      {result.repurpose.length > 0 && <IdeaCard ideas={result.repurpose} number={hasSteps ? "02" : "01"} />}
+      <div
+        className="min-h-0 flex-1 overflow-clip"
+        {...(hasTabs && { role: "tabpanel", id: `${tabsId}-panel`, "aria-labelledby": `${tabsId}-${shown}` })}
+      >
+        {shown === "steps" ? <StepList steps={result.howToRecycle} /> : <IdeaCard ideas={result.repurpose} />}
+      </div>
 
-      <p className="text-sm leading-relaxed text-ink-soft">
-        Recycling rules vary by city. Check with your local hauler before you bin it.
-      </p>
-
-      <ScanAgainButton onClick={onClose} />
+      <footer className="flex shrink-0 flex-col gap-2">
+        <p className="text-center text-xs text-ink-soft">Rules vary by city. Check with your local hauler.</p>
+        <ScanAgainButton onClick={onClose} />
+      </footer>
     </article>
+  );
+}
+
+function TabButton({
+  id,
+  isSelected,
+  onSelect,
+  children,
+}: {
+  id: string;
+  isSelected: boolean;
+  onSelect: () => void;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      role="tab"
+      id={id}
+      aria-selected={isSelected}
+      onClick={onSelect}
+      className={`min-h-11 flex-1 rounded-full text-sm font-semibold transition-colors ${
+        isSelected ? "bg-moss text-glimmer" : "text-moss"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+// Room kept for the "More steps" row when the steps don't all fit.
+const PAGER_PX = 52;
+
+/**
+ * Numbered steps that never scroll. When they don't all fit (a short phone,
+ * long steps, a caution taking space), it shows as many as fit and pages to
+ * the rest. SAFETY: steps are never silently cut off; a hazardous item's
+ * drop-off steps must always be reachable.
+ */
+function StepList({ steps }: { steps: string[] }): React.JSX.Element {
+  const areaRef = useRef<HTMLDivElement>(null);
+  const [start, setStart] = useState(0);
+  const [fit, setFit] = useState<{ count: number; height: number | null }>({ count: steps.length, height: null });
+
+  useEffect(() => {
+    const area = areaRef.current;
+    if (!area) return;
+    // Fires once on observe, then whenever the space changes (rotation,
+    // window resize), so the page size always matches the screen.
+    const observer = new ResizeObserver(() => {
+      const top = area.getBoundingClientRect().top;
+      const bottoms = [...area.querySelectorAll("li")].map((item) => item.getBoundingClientRect().bottom - top);
+      if ((bottoms.at(-1) ?? 0) <= area.clientHeight) {
+        setFit({ count: bottoms.length, height: null });
+        return;
+      }
+      const count = Math.max(1, bottoms.filter((bottom) => bottom <= area.clientHeight - PAGER_PX).length);
+      // +1 keeps the list's bottom border inside the clip.
+      setFit({ count, height: bottoms[count - 1] + 1 });
+    });
+    observer.observe(area);
+    return () => observer.disconnect();
+  }, [start, steps]);
+
+  const shown = steps.slice(start);
+  const end = Math.min(start + fit.count, steps.length);
+  const hasMore = end < steps.length;
+
+  return (
+    <div ref={areaRef} className="relative h-full">
+      <ol
+        style={fit.height === null ? undefined : { maxHeight: fit.height }}
+        className="overflow-clip rounded-[18px] border border-ink/10 bg-paper"
+      >
+        {shown.map((step, offset) => (
+          <li
+            key={start + offset}
+            aria-hidden={offset >= fit.count || undefined}
+            className="flex items-center gap-3 border-b border-ink/10 px-3.5 py-[clamp(5px,1.2cqh,11px)] last:border-b-0"
+          >
+            <span
+              aria-hidden="true"
+              className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-sage font-display text-xs font-bold text-moss"
+            >
+              {start + offset + 1}
+            </span>
+            <span className="text-[clamp(13px,2cqh,15px)] leading-snug font-medium">{step}</span>
+          </li>
+        ))}
+      </ol>
+      {(hasMore || start > 0) && (
+        <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-3">
+          <p className="text-xs text-ink-soft">
+            Steps {start + 1}–{end} of {steps.length}
+          </p>
+          <button
+            type="button"
+            onClick={() => setStart(hasMore ? end : 0)}
+            className="inline-flex min-h-11 items-center gap-1.5 rounded-full bg-sage px-4 text-sm font-semibold text-moss"
+          >
+            {hasMore ? "More steps" : "Back to step 1"}
+            <Icon name="arrow" size={16} className={hasMore ? "" : "rotate-180"} />
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
 function UnsureCard({ result, headingId, onClose }: ResultCardProps): React.JSX.Element {
   const isNotAnItem = result.status === "not_an_item";
   return (
-    <article className="flex flex-col gap-6">
+    <article className="flex h-full min-h-0 flex-col gap-[clamp(10px,2cqh,20px)]">
       <ResultHeading
         headingId={headingId}
         title={isNotAnItem ? "Nothing to sort here" : "Hmm, not sure"}
         eyebrow="The grove is puzzled"
         onClose={onClose}
       />
-      <section className="flex flex-col items-center rounded-[26px] bg-linear-145 from-sage-mist to-cream px-6 py-8 text-center">
-        <div className="grayscale">
-          <Fairy kind={null} size={112} />
+      <section className="flex min-h-0 flex-1 flex-col items-center justify-center rounded-[26px] bg-linear-145 from-sage-mist to-cream px-6 text-center">
+        <div className="h-[clamp(72px,16cqh,112px)] w-[clamp(72px,16cqh,112px)] grayscale">
+          <Fairy kind={null} size="100%" />
         </div>
-        <p className="mt-4 max-w-[30ch] text-[15px] leading-relaxed text-ink-soft">
+        <p className="mt-4 max-w-[30ch] text-[clamp(14px,2cqh,15px)] leading-relaxed text-ink-soft">
           {isNotAnItem
             ? "The fairies don't see an object. Point the camera at one thing you want to recycle or reuse."
             : "The fairies couldn't make that out. Try a closer, brighter shot with just one item in the frame. When in doubt, keep it out of the recycling."}
@@ -173,7 +287,7 @@ export function ResultHeading({
   eyebrow?: string;
 }): React.JSX.Element {
   return (
-    <div className="grid grid-cols-[44px_1fr] items-center gap-3">
+    <div className="grid shrink-0 grid-cols-[44px_1fr] items-center gap-3">
       <button
         type="button"
         onClick={onClose}
@@ -187,7 +301,7 @@ export function ResultHeading({
         <h1
           id={headingId}
           tabIndex={-1}
-          className="font-display text-[1.75rem] leading-[1.08] font-semibold tracking-tight outline-none"
+          className="line-clamp-2 font-display text-[clamp(1.35rem,4cqh,1.75rem)] leading-[1.08] font-semibold tracking-tight outline-none"
         >
           {title}
         </h1>
@@ -208,7 +322,11 @@ export function ScanAgainButton({
   const style =
     variant === "solid" ? "bg-moss text-glimmer active:bg-moss-deep" : "border-2 border-moss text-moss";
   return (
-    <button type="button" onClick={onClick} className={`min-h-13 w-full rounded-full px-6 text-base font-semibold ${style}`}>
+    <button
+      type="button"
+      onClick={onClick}
+      className={`min-h-12 w-full shrink-0 rounded-full px-6 text-base font-semibold ${style}`}
+    >
       {label}
     </button>
   );

@@ -21,7 +21,7 @@ const COPY = {
 export function PermissionFallback({ reason, onFile, onRetry }: PermissionFallbackProps): React.JSX.Element {
   const copy = COPY[reason];
   return (
-    <section className="flex flex-col items-center px-2 pt-20 text-center">
+    <section className="flex flex-col items-center px-2 text-center">
       <h1 className="font-display text-[1.9rem] leading-[1.1] font-semibold tracking-tight text-lichen">
         {copy.heading}
       </h1>
