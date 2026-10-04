@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { UNSURE_RESULT, type ScanResult } from "@/lib/scan/schema";
+import { UNSURE_RESULT, type Preferences, type ScanResult } from "@/lib/scan/schema";
 
 vi.mock("server-only", () => ({}));
 
@@ -14,6 +14,22 @@ describe("scan cache", () => {
     expect(cacheKey({ image: "QUJD" })).toBe(cacheKey({ image: "QUJD" }));
     expect(cacheKey({ image: "QUJD" })).not.toBe(cacheKey({ image: "QUJE" }));
     expect(cacheKey({ image: "QUJD", location: "Austin" })).not.toBe(cacheKey({ image: "QUJD" }));
+  });
+
+  it("keys on the preferences, so one person's ideas never go to another", () => {
+    const yard: Preferences = { space: "yard", interests: ["plants"], tools: ["basic_tools"] };
+    const kids: Preferences = { space: "indoors", interests: ["kids"], tools: ["scissors_tape"] };
+    expect(cacheKey({ image: "QUJD", preferences: yard })).not.toBe(cacheKey({ image: "QUJD", preferences: kids }));
+    expect(cacheKey({ image: "QUJD", preferences: yard })).not.toBe(cacheKey({ image: "QUJD" }));
+    expect(cacheKey({ image: "QUJD", preferences: { ...yard, space: null } })).not.toBe(
+      cacheKey({ image: "QUJD", preferences: yard }),
+    );
+  });
+
+  it("ignores the order the choices were picked in", () => {
+    const a: Preferences = { space: "balcony", interests: ["plants", "decor"], tools: ["sewing", "glue_paint"] };
+    const b: Preferences = { space: "balcony", interests: ["decor", "plants"], tools: ["glue_paint", "sewing"] };
+    expect(cacheKey({ image: "QUJD", preferences: a })).toBe(cacheKey({ image: "QUJD", preferences: b }));
   });
 
   it("returns a stored confident answer until it expires", () => {

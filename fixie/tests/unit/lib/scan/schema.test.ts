@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ScanRequest, ScanResult, UNSURE_RESULT, UpcycleIdea } from "@/lib/scan/schema";
+import { Preferences, ScanRequest, ScanResult, UNSURE_RESULT, UpcycleIdea } from "@/lib/scan/schema";
 import { DEMO_RESULTS } from "@/lib/scan/demo-results";
 
 describe("ScanResult", () => {
@@ -44,5 +44,33 @@ describe("ScanRequest", () => {
 
   it("rejects an oversized image", () => {
     expect(ScanRequest.safeParse({ image: "a".repeat(1_500_001) }).success).toBe(false);
+  });
+});
+
+describe("Preferences", () => {
+  const full = { space: "balcony", interests: ["plants", "kids"], tools: ["scissors_tape", "glue_paint"] };
+
+  it("accepts a full profile and a skipped one", () => {
+    expect(Preferences.safeParse(full).success).toBe(true);
+    expect(Preferences.safeParse({ space: null, interests: [], tools: [] }).success).toBe(true);
+  });
+
+  it("rejects unknown values", () => {
+    expect(Preferences.safeParse({ ...full, space: "castle" }).success).toBe(false);
+    expect(Preferences.safeParse({ ...full, interests: ["skydiving"] }).success).toBe(false);
+    expect(Preferences.safeParse({ ...full, tools: ["chainsaw"] }).success).toBe(false);
+  });
+
+  it("rejects duplicates and over-long lists", () => {
+    expect(Preferences.safeParse({ ...full, interests: ["plants", "plants"] }).success).toBe(false);
+    const tooMany = ["plants", "organizing", "decor", "gifts", "kids", "plants"];
+    expect(Preferences.safeParse({ ...full, interests: tooMany }).success).toBe(false);
+    expect(Preferences.safeParse({ ...full, tools: Array(50).fill("sewing") }).success).toBe(false);
+  });
+
+  it("is optional on a scan request", () => {
+    expect(ScanRequest.safeParse({ image: "QUJD" }).success).toBe(true);
+    expect(ScanRequest.safeParse({ image: "QUJD", preferences: full }).success).toBe(true);
+    expect(ScanRequest.safeParse({ image: "QUJD", preferences: { ...full, space: "moon" } }).success).toBe(false);
   });
 });

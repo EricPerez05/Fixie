@@ -145,6 +145,15 @@ body {
   outline-offset: 3px;
 }
 
+/*
+ * Headings that only receive focus from code (tabindex="-1"), so screen
+ * readers land on a new screen, aren't controls and get no ring. Unlayered,
+ * like the rule above, because Tailwind's outline-none can't beat it.
+ */
+[tabindex="-1"]:focus-visible {
+  outline: none;
+}
+
 /* Glowing dots that drift over the dark scan screens. */
 .firefly {
   position: absolute;
@@ -277,10 +286,68 @@ body {
   }
 }
 
+/*
+ * A slower firefly for the intro: it wanders a loop set per dot with
+ * --x1..--y3 over --wander, and blinks on its own --blink rhythm.
+ */
+.firefly.is-wandering {
+  width: var(--size, 5px);
+  height: var(--size, 5px);
+  animation:
+    firefly-wander var(--wander, 9s) ease-in-out infinite,
+    firefly-blink var(--blink, 2.4s) ease-in-out infinite;
+  animation-delay: var(--delay, 0s);
+}
+
+@keyframes firefly-wander {
+  25% {
+    transform: translate(var(--x1), var(--y1));
+  }
+  50% {
+    transform: translate(var(--x2), var(--y2));
+  }
+  75% {
+    transform: translate(var(--x3), var(--y3));
+  }
+}
+
+@keyframes firefly-blink {
+  0%,
+  100% {
+    opacity: 0.95;
+  }
+  45% {
+    opacity: 0.2;
+  }
+  60% {
+    opacity: 1;
+  }
+}
+
+/* A soft pulse for sparkles and glows in illustrations. */
+.twinkle {
+  animation: twinkle 2.6s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+@keyframes twinkle {
+  50% {
+    opacity: 0.6;
+    transform: scale(0.9);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   /* Rest at its tilt straight away; the shortened animation below would
      still flash its first frame. */
   .polaroid-drop {
+    animation: none !important;
+  }
+
+  /* Intro fireflies and sparkles hold still rather than flick through one fast loop. */
+  .firefly.is-wandering,
+  .twinkle {
     animation: none !important;
   }
 

@@ -6,7 +6,15 @@ import { requestGeminiReport } from "./gemini";
 import { getKnowledgeBlock } from "./knowledge";
 import { enforceSafetyRules } from "./safety";
 import { REPORT_TOOL, REPORT_TOOL_NAME, SYSTEM_PROMPT, buildUserText } from "./prompt";
-import { MAX_IDEAS, MAX_STEPS, MAX_SUPPLIES, ScanResult, UNSURE_RESULT, type ScanRequest } from "./schema";
+import {
+  MAX_IDEAS,
+  MAX_STEPS,
+  MAX_SUPPLIES,
+  ScanResult,
+  UNSURE_RESULT,
+  type Preferences,
+  type ScanRequest,
+} from "./schema";
 
 // Re-exported so existing callers and tests keep one import for the scan pipeline.
 export { enforceSafetyRules };
@@ -49,7 +57,7 @@ export async function analyzeItem(input: ScanRequest): Promise<ScanResult> {
   const gemini = getScanProvider() === "gemini" ? getGeminiEnv() : null;
   if (gemini) {
     const raw = await requestGeminiReport(input, gemini, getKnowledgeBlock());
-    return raw === null ? UNSURE_RESULT : validateReport(raw);
+    return raw === null ? UNSURE_RESULT : validateReport(raw, input.preferences);
   }
 
   const { client, model } = getClient();
@@ -70,7 +78,7 @@ export async function analyzeItem(input: ScanRequest): Promise<ScanResult> {
           role: "user",
           content: [
             { type: "image", source: { type: "base64", media_type: "image/jpeg", data: input.image } },
-            { type: "text", text: buildUserText(input.location) },
+            { type: "text", text: buildUserText(input.location, input.preferences) },
           ],
         },
       ],
@@ -103,11 +111,11 @@ export async function analyzeItem(input: ScanRequest): Promise<ScanResult> {
     return UNSURE_RESULT;
   }
 
-  return validateReport(toolUse.input);
+  return validateReport(toolUse.input, input.preferences);
 }
 
 /** Checks a model's report against the contract, then applies the safety rules. */
-function validateReport(raw: unknown): ScanResult {
+function validateReport(raw: unknown, preferences: Preferences | undefined): ScanResult {
   const parsed = ScanResult.safeParse(trimLists(raw));
   if (!parsed.success) {
     log.warn("scan.invalid_model_output", {
@@ -117,7 +125,7 @@ function validateReport(raw: unknown): ScanResult {
     });
     return UNSURE_RESULT;
   }
-  return enforceSafetyRules(parsed.data);
+  return enforceSafetyRules(parsed.data, preferences);
 }
 
 /**

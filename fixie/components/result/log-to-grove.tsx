@@ -35,7 +35,7 @@ export function LogToGroveButton({ control }: { control: LogControl }): React.JS
         isDone ? "bg-sage text-moss" : "bg-moss text-glimmer active:bg-moss-deep disabled:opacity-80"
       }`}
     >
-      <Icon name={isDone ? "check" : "leaf"} size={18} />
+      <Icon name={isDone ? "check" : "forest"} size={18} />
       {LABEL[status]}
     </button>
   );
