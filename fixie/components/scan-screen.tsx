@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useState } from "react";
-import { AnimatePresence, MotionConfig } from "framer-motion";
+import { MotionConfig } from "framer-motion";
 import { useCamera } from "@/hooks/use-camera";
 import { useGrove } from "@/hooks/use-grove";
 import { useLocation } from "@/hooks/use-location";
@@ -198,19 +198,15 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
 
         {state.status === "loading" && <InspectingOverlay />}
 
-        <AnimatePresence>
-          {isPanelOpen && (
-            <Panel key="result" labelledBy={panelHeadingId}>
-              <PanelBody
-                state={state}
-                captureError={captureError}
-                headingId={panelHeadingId}
-                onScanAgain={scanAgain}
-                onRetry={() => void scanner.retry()}
-              />
-            </Panel>
-          )}
-        </AnimatePresence>
+        <Panel isOpen={isPanelOpen} onClose={scanAgain} labelledBy={panelHeadingId}>
+          <PanelBody
+            state={state}
+            captureError={captureError}
+            headingId={panelHeadingId}
+            onScanAgain={scanAgain}
+            onRetry={() => void scanner.retry()}
+          />
+        </Panel>
 
         <p aria-live="polite" className="sr-only">
           {announcement(state)}
