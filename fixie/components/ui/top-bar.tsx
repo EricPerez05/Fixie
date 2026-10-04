@@ -8,9 +8,11 @@ interface TopBarProps {
   onHome?: () => void;
   /** Transparent with a fade, for floating over the live camera. */
   isOverlay?: boolean;
+  /** When set, shows a button that reopens "Tell the fairies about you". */
+  onEditProfile?: () => void;
 }
 
-export function TopBar({ tone, isDemo, onHome, isOverlay = false }: TopBarProps): React.JSX.Element {
+export function TopBar({ tone, isDemo, onHome, isOverlay = false, onEditProfile }: TopBarProps): React.JSX.Element {
   const isDark = tone === "dark";
   const surface = isOverlay
     ? "bg-linear-to-b from-moss-night/80 to-transparent"
@@ -53,6 +55,18 @@ export function TopBar({ tone, isDemo, onHome, isOverlay = false }: TopBarProps)
           <Icon name="sparkle" size={14} className="fill-current" />
           Demo mode
         </p>
+      )}
+      {onEditProfile && (
+        <button
+          type="button"
+          onClick={onEditProfile}
+          aria-label="Your fairy profile"
+          className={`grid h-11 w-11 place-items-center rounded-full border ${isDemo ? "" : "ml-auto"} ${
+            isDark ? "border-lichen/30 text-lichen" : "border-ink/20 text-ink"
+          }`}
+        >
+          <Icon name="wand" size={20} />
+        </button>
       )}
     </header>
   );

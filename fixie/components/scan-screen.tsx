@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useState, useSyncExternalStore } from "react";
 import { AnimatePresence, MotionConfig } from "framer-motion";
 import { useCamera } from "@/hooks/use-camera";
 import { useLocation } from "@/hooks/use-location";
+import { EMPTY_PREFERENCES, usePreferences } from "@/hooks/use-preferences";
 import { useScan, type ScanState } from "@/hooks/use-scan";
+import type { Preferences } from "@/lib/scan/schema";
 import { captureFrame } from "@/lib/camera/capture-frame";
 import { loadImageFile } from "@/lib/camera/load-image";
 import { log } from "@/lib/log";
@@ -18,6 +20,7 @@ import { Icon } from "./ui/icon";
 import { InspectingOverlay } from "./ui/inspecting-overlay";
 import { LocationField } from "./ui/location-field";
 import { Panel } from "./ui/panel";
+import { ProfileSheet } from "./ui/profile-sheet";
 import { TopBar } from "./ui/top-bar";
 
 interface ScanScreenProps {
@@ -28,13 +31,35 @@ interface ScanScreenProps {
 export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
   const camera = useCamera();
   const { location, setLocation } = useLocation();
-  const scanner = useScan({ isDemo, location });
+  const { preferences, setPreferences } = usePreferences();
+  const scanner = useScan({ isDemo, location, preferences });
+  const isClient = useIsClient();
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
   const panelHeadingId = useId();
   const [captureError, setCaptureError] = useState<string | null>(null);
 
   const { state } = scanner;
   const isCameraLive = camera.status === "active";
   const isPanelOpen = state.status === "success" || state.status === "error" || captureError !== null;
+  // Ask once, on first launch. Demo mode ignores preferences, so it doesn't
+  // interrupt a demo with questions that change nothing.
+  const isFirstTime = isClient && preferences === null && !isDemo;
+  const isSheetOpen = isFirstTime || isEditingProfile;
+
+  const closeSheet = useCallback((): void => {
+    // Skipping saves an empty profile so the sheet doesn't return every visit.
+    if (preferences === null) setPreferences(EMPTY_PREFERENCES);
+    setIsEditingProfile(false);
+  }, [preferences, setPreferences]);
+
+  const saveProfile = useCallback(
+    (value: Preferences): void => {
+      setPreferences(value);
+      setIsEditingProfile(false);
+    },
+    [setPreferences],
+  );
+  const editProfile = (): void => setIsEditingProfile(true);
 
   // Move focus to the result heading so screen readers and keyboards land on
   // the answer instead of the now-hidden shutter button.
@@ -82,69 +107,85 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
   return (
     <MotionConfig reducedMotion="user">
       <main className="relative h-full w-full overflow-hidden bg-moss-deep bg-[radial-gradient(circle_at_50%_42%,color-mix(in_srgb,var(--fern)_25%,transparent),transparent_34%)] text-lichen">
-        <CameraView videoRef={camera.videoRef} isVisible={isCameraLive} />
+        {/* "contents" keeps the layout as is; inert keeps focus inside the open sheet. */}
+        <div inert={isSheetOpen} className="contents">
+          <CameraView videoRef={camera.videoRef} isVisible={isCameraLive} />
 
-        {isCameraLive ? (
-          <>
-            <div className="absolute inset-x-0 top-0">
-              <TopBar tone="dark" isDemo={isDemo} onHome={goHome} isOverlay />
-            </div>
-            {state.status === "idle" && !captureError && (
-              <div className="absolute inset-x-0 bottom-0 z-10 bg-linear-to-t from-moss-night/90 to-transparent px-6 pt-16 pb-[max(2rem,var(--safe-bottom))]">
-                <p className="mb-4 text-center text-[15px] text-lichen">Fill the frame with one item</p>
-                <div className="grid grid-cols-[1fr_auto_1fr] items-center">
-                  <div className="justify-self-start">
-                    <UploadButton onFile={onFile} variant="icon" label="Upload a photo instead" />
-                  </div>
-                  <ScanButton onScan={scanFromCamera} isBusy={false} />
-                  <button
-                    type="button"
-                    onClick={goHome}
-                    aria-label="Close camera"
-                    className="grid h-13 w-13 place-items-center justify-self-end rounded-full border border-lichen/30 bg-moss-night/50 text-lichen backdrop-blur-sm"
-                  >
-                    <Icon name="close" size={22} />
-                  </button>
-                </div>
+          {isCameraLive ? (
+            <>
+              <div className="absolute inset-x-0 top-0">
+                <TopBar tone="dark" isDemo={isDemo} onHome={goHome} isOverlay onEditProfile={editProfile} />
               </div>
-            )}
-          </>
-        ) : (
-          <div className="flex h-full flex-col overflow-y-auto">
-            <TopBar tone="dark" isDemo={isDemo} />
-            <div className="px-6 pb-[max(2rem,var(--safe-bottom))]">
-              {camera.status === "denied" || camera.status === "unavailable" ? (
-                <PermissionFallback reason={camera.status} onFile={onFile} onRetry={() => void camera.start()} />
-              ) : (
-                <Welcome
-                  isResuming={camera.status === "paused"}
-                  isRequesting={camera.status === "requesting"}
-                  onOpenCamera={() => void camera.start()}
-                  onExample={scanner.showExample}
-                  onFile={onFile}
-                  location={location}
-                  onLocationChange={setLocation}
-                />
+              {state.status === "idle" && !captureError && (
+                <div className="absolute inset-x-0 bottom-0 z-10 bg-linear-to-t from-moss-night/90 to-transparent px-6 pt-16 pb-[max(2rem,var(--safe-bottom))]">
+                  <p className="mb-4 text-center text-[15px] text-lichen">Fill the frame with one item</p>
+                  <div className="grid grid-cols-[1fr_auto_1fr] items-center">
+                    <div className="justify-self-start">
+                      <UploadButton onFile={onFile} variant="icon" label="Upload a photo instead" />
+                    </div>
+                    <ScanButton onScan={scanFromCamera} isBusy={false} />
+                    <button
+                      type="button"
+                      onClick={goHome}
+                      aria-label="Close camera"
+                      className="grid h-13 w-13 place-items-center justify-self-end rounded-full border border-lichen/30 bg-moss-night/50 text-lichen backdrop-blur-sm"
+                    >
+                      <Icon name="close" size={22} />
+                    </button>
+                  </div>
+                </div>
               )}
+            </>
+          ) : (
+            <div className="flex h-full flex-col overflow-y-auto">
+              <TopBar tone="dark" isDemo={isDemo} onEditProfile={editProfile} />
+              <div className="px-6 pb-[max(2rem,var(--safe-bottom))]">
+                {camera.status === "denied" || camera.status === "unavailable" ? (
+                  <PermissionFallback reason={camera.status} onFile={onFile} onRetry={() => void camera.start()} />
+                ) : (
+                  <Welcome
+                    isResuming={camera.status === "paused"}
+                    isRequesting={camera.status === "requesting"}
+                    onOpenCamera={() => void camera.start()}
+                    onExample={scanner.showExample}
+                    onFile={onFile}
+                    location={location}
+                    onLocationChange={setLocation}
+                  />
+                )}
+              </div>
             </div>
-          </div>
-        )}
-
-        {state.status === "loading" && <InspectingOverlay />}
-
-        <AnimatePresence>
-          {isPanelOpen && (
-            <Panel key="result" labelledBy={panelHeadingId} header={<TopBar tone="light" isDemo={isDemo} onHome={goHome} />}>
-              <PanelBody
-                state={state}
-                captureError={captureError}
-                headingId={panelHeadingId}
-                onScanAgain={scanAgain}
-                onRetry={() => void scanner.retry()}
-              />
-            </Panel>
           )}
-        </AnimatePresence>
+
+          {state.status === "loading" && <InspectingOverlay />}
+
+          <AnimatePresence>
+            {isPanelOpen && (
+              <Panel
+                key="result"
+                labelledBy={panelHeadingId}
+                header={<TopBar tone="light" isDemo={isDemo} onHome={goHome} />}
+              >
+                <PanelBody
+                  state={state}
+                  captureError={captureError}
+                  headingId={panelHeadingId}
+                  onScanAgain={scanAgain}
+                  onRetry={() => void scanner.retry()}
+                />
+              </Panel>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {isSheetOpen && (
+          <ProfileSheet
+            initial={preferences}
+            isFirstTime={preferences === null}
+            onSave={saveProfile}
+            onDismiss={closeSheet}
+          />
+        )}
 
         <p aria-live="polite" className="sr-only">
           {announcement(state)}
@@ -264,4 +305,15 @@ function announcement(state: ScanState): string {
     default:
       return "";
   }
+}
+
+const noopSubscribe = (): (() => void) => () => undefined;
+
+/** False during server render and hydration, true after, without a setState-in-effect. */
+function useIsClient(): boolean {
+  return useSyncExternalStore(
+    noopSubscribe,
+    () => true,
+    () => false,
+  );
 }

@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ScanResult } from "@/lib/scan/schema";
+import { ScanResult, type Preferences } from "@/lib/scan/schema";
 import { DEMO_RESULTS } from "@/lib/scan/demo-results";
 import { log } from "@/lib/log";
+import { isEmptyPreferences } from "./use-preferences";
 
 export type ScanState =
   | { status: "idle" }
@@ -35,7 +36,11 @@ const MESSAGES = {
  * success | error. The response is validated against the shared schema, so
  * the UI never renders a shape it doesn't understand.
  */
-export function useScan({ isDemo = false, location = "" }: { isDemo?: boolean; location?: string } = {}): UseScan {
+export function useScan({
+  isDemo = false,
+  location = "",
+  preferences = null,
+}: { isDemo?: boolean; location?: string; preferences?: Preferences | null } = {}): UseScan {
   const [state, setState] = useState<ScanState>({ status: "idle" });
   const controllerRef = useRef<AbortController | null>(null);
   const lastImageRef = useRef<string | null>(null);
@@ -53,7 +58,12 @@ export function useScan({ isDemo = false, location = "" }: { isDemo?: boolean; l
         const response = await fetch(`/api/scan${isDemo ? "?demo=1" : ""}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ image, location: location.trim() || undefined }),
+          body: JSON.stringify({
+            image,
+            location: location.trim() || undefined,
+            // A skipped sheet sends nothing, so it shares the plain cache entry.
+            preferences: preferences && !isEmptyPreferences(preferences) ? preferences : undefined,
+          }),
           signal: controller.signal,
         });
 
@@ -85,7 +95,7 @@ export function useScan({ isDemo = false, location = "" }: { isDemo?: boolean; l
         window.clearTimeout(timeout);
       }
     },
-    [isDemo, location],
+    [isDemo, location, preferences],
   );
 
   const retry = useCallback(async (): Promise<void> => {
