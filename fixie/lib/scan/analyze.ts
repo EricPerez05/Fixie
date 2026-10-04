@@ -103,7 +103,11 @@ export async function analyzeItem(input: ScanRequest): Promise<ScanResult> {
 function validateReport(raw: unknown): ScanResult {
   const parsed = ScanResult.safeParse(trimLists(raw));
   if (!parsed.success) {
-    log.warn("scan.invalid_model_output", { issues: parsed.error.issues.length });
+    log.warn("scan.invalid_model_output", {
+      issues: parsed.error.issues.length,
+      // Field names only, never values, so nothing from the photo is logged.
+      fields: parsed.error.issues.map((issue) => issue.path.join(".") || "(root)").join(", "),
+    });
     return UNSURE_RESULT;
   }
   return enforceSafetyRules(parsed.data);

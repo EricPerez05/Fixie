@@ -56,7 +56,7 @@ describe("analyzeItem with Gemini", () => {
     expect(mockCreate).not.toHaveBeenCalled();
 
     const [url, init] = mockFetch.mock.calls[0];
-    expect(url).toContain("/models/gemini-2.5-flash:generateContent");
+    expect(url).toContain("/models/gemini-flash-latest:generateContent");
     // SECURITY: the key travels in a header, never in the URL.
     expect(url).not.toContain("gemini-test-key");
     expect(init.headers["x-goog-api-key"]).toBe("gemini-test-key");
@@ -82,6 +82,23 @@ describe("analyzeItem with Gemini", () => {
     const battery = { ...JAR, item: "AA battery", recyclable: "special_dropoff", caution: "Tape the ends." };
     mockFetch.mockResolvedValue(geminiReply(JSON.stringify(battery)));
     expect((await analyzeItem({ image: "QUJD" })).repurpose).toEqual([]);
+  });
+
+  it("fills in fields Gemini leaves out and lowercases enum values", async () => {
+    const withoutCaution: Partial<ScanResult> = { ...JAR, confidence: "High" as never, fairy: "Glass" as never };
+    delete withoutCaution.caution;
+    mockFetch.mockResolvedValue(geminiReply(JSON.stringify(withoutCaution)));
+    expect(await analyzeItem({ image: "QUJD" })).toEqual(JAR);
+  });
+
+  it("falls back to the latest Flash model when the configured one is retired", async () => {
+    vi.stubEnv("GEMINI_MODEL", "gemini-1.0-pro-vision");
+    mockFetch
+      .mockResolvedValueOnce(new Response("{}", { status: 404 }))
+      .mockResolvedValueOnce(geminiReply(JSON.stringify(JAR)));
+    expect(await analyzeItem({ image: "QUJD" })).toEqual(JAR);
+    expect(mockFetch.mock.calls[0][0]).toContain("/models/gemini-1.0-pro-vision:");
+    expect(mockFetch.mock.calls[1][0]).toContain("/models/gemini-flash-latest:");
   });
 
   it("retries without the schema when the model rejects it", async () => {

@@ -37,7 +37,9 @@ export function getScanEnv(source: NodeJS.ProcessEnv = process.env): ScanEnv {
 }
 
 // Gemini's free tier: a no-cost alternative to Claude for live scans.
-const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
+// An alias Google keeps pointed at its current Flash model, so the app
+// doesn't break when a versioned name is retired.
+export const DEFAULT_GEMINI_MODEL = "gemini-flash-latest";
 
 export interface GeminiEnv {
   apiKey: string;
