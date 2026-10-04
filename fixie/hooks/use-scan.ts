@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ScanResult } from "@/lib/scan/schema";
+import { ScanResult, type Preferences } from "@/lib/scan/schema";
 import { DEMO_RESULTS } from "@/lib/scan/demo-results";
 import { log } from "@/lib/log";
+import { isEmptyPreferences } from "./use-preferences";
 
 export type ScanState =
   | { status: "idle" }
@@ -40,10 +41,12 @@ const MESSAGES = {
 export function useScan({
   isDemo = false,
   location = "",
+  preferences = null,
   onScanned,
 }: {
   isDemo?: boolean;
   location?: string;
+  preferences?: Preferences | null;
   /** Called with each validated scan result (not examples or reopened results). */
   onScanned?: (result: ScanResult) => void;
 } = {}): UseScan {
@@ -64,7 +67,12 @@ export function useScan({
         const response = await fetch(`/api/scan${isDemo ? "?demo=1" : ""}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ image, location: location.trim() || undefined }),
+          body: JSON.stringify({
+            image,
+            location: location.trim() || undefined,
+            // A skipped sheet sends nothing, so it shares the plain cache entry.
+            preferences: preferences && !isEmptyPreferences(preferences) ? preferences : undefined,
+          }),
           signal: controller.signal,
         });
 
@@ -97,7 +105,7 @@ export function useScan({
         window.clearTimeout(timeout);
       }
     },
-    [isDemo, location, onScanned],
+    [isDemo, location, preferences, onScanned],
   );
 
   const retry = useCallback(async (): Promise<void> => {

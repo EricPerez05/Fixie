@@ -206,7 +206,9 @@ export const DEMO_RESULTS: readonly ScanResult[] = [
 /**
  * Picks a canned result. Deterministic for a given image so a retake of the
  * same frame shows the same answer, which keeps the demo predictable.
- * Never fails: any string maps to some entry.
+ * Never fails: any string maps to some entry. Ignores the person's
+ * preferences: canned results are the same for everyone, which is fine for
+ * a demo that has to work with no network.
  */
 export function pickDemoResult(image: string): ScanResult {
   // Hash the content, not the length: base64 length is always a multiple of

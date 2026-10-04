@@ -1,11 +1,15 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useState, useSyncExternalStore } from "react";
 import { MotionConfig } from "framer-motion";
 import { useCamera } from "@/hooks/use-camera";
 import { useGrove } from "@/hooks/use-grove";
+import { useIntroSeen } from "@/hooks/use-intro-seen";
 import { useLocation } from "@/hooks/use-location";
+import { useOnboarding } from "@/hooks/use-onboarding";
+import { EMPTY_PREFERENCES, usePreferences } from "@/hooks/use-preferences";
 import { useScan, type ScanState } from "@/hooks/use-scan";
+import type { Preferences } from "@/lib/scan/schema";
 import { captureFrame } from "@/lib/camera/capture-frame";
 import { loadImageFile } from "@/lib/camera/load-image";
 import { log } from "@/lib/log";
@@ -13,6 +17,9 @@ import { CameraOrb } from "./camera/camera-orb";
 import { CameraView } from "./camera/camera-view";
 import { PermissionFallback } from "./camera/permission-fallback";
 import { GroveScreen } from "./grove/grove-screen";
+import { Intro } from "./onboarding/intro";
+import { IntroQuestions } from "./onboarding/intro-questions";
+import { OnboardingLayer } from "./onboarding/onboarding-layer";
 import { ScanButton } from "./camera/scan-button";
 import { UploadButton } from "./camera/upload-button";
 import { ResultCard, ResultHeading, ScanAgainButton } from "./result/result-card";
@@ -22,6 +29,7 @@ import { InspectingOverlay } from "./ui/inspecting-overlay";
 import { LocationField } from "./ui/location-field";
 import { Panel } from "./ui/panel";
 import { PetalShower } from "./ui/petal-shower";
+import { ProfileSheet } from "./ui/profile-sheet";
 import { TopBar } from "./ui/top-bar";
 
 interface ScanScreenProps {
@@ -32,8 +40,13 @@ interface ScanScreenProps {
 export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
   const camera = useCamera();
   const { location, setLocation } = useLocation();
+  const { preferences, setPreferences } = usePreferences();
   const grove = useGrove();
-  const scanner = useScan({ isDemo, location, onScanned: grove.addScan });
+  const scanner = useScan({ isDemo, location, preferences, onScanned: grove.addScan });
+  const isClient = useIsClient();
+  const { hasSeenIntro, markIntroSeen } = useIntroSeen();
+  const onboarding = useOnboarding();
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
   const panelHeadingId = useId();
   const [captureError, setCaptureError] = useState<string | null>(null);
   const [tab, setTab] = useState<NavTab>("home");
@@ -41,6 +54,30 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
   const { state } = scanner;
   const isCameraLive = camera.status === "active";
   const isPanelOpen = state.status === "success" || state.status === "error" || captureError !== null;
+  // Brand-new people only: anyone who answered or skipped the questions has
+  // preferences saved. Waits for the browser, since storage can't be read on
+  // the server. Demo mode never shows it, so a demo isn't interrupted.
+  const isIntroShowing = isClient && !isDemo && preferences === null && !hasSeenIntro;
+  const isScreenCovered = isIntroShowing || isEditingProfile;
+
+  // Saving or skipping the intro's questions both end the intro for good.
+  const finishIntro = useCallback(
+    (value: Preferences): void => {
+      setPreferences(value);
+      markIntroSeen();
+    },
+    [setPreferences, markIntroSeen],
+  );
+
+  const closeSheet = useCallback((): void => setIsEditingProfile(false), []);
+  const saveProfile = useCallback(
+    (value: Preferences): void => {
+      setPreferences(value);
+      setIsEditingProfile(false);
+    },
+    [setPreferences],
+  );
+  const editProfile = (): void => setIsEditingProfile(true);
 
   // Move focus to the result heading so screen readers and keyboards land on
   // the answer instead of the now-hidden shutter button.
@@ -103,12 +140,14 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
       {/* On short screens (under 640px of app height) the home screen drops its
           two secondary lines so everything still fits without scrolling. */}
       <main className="relative h-full w-full overflow-clip [container-type:size] bg-moss-deep bg-[radial-gradient(circle_at_50%_42%,color-mix(in_srgb,var(--fern)_25%,transparent),transparent_34%)] text-lichen">
+        {/* "contents" keeps the layout as is; inert keeps focus inside the intro or the open sheet. */}
+        <div inert={isScreenCovered} className="contents">
         <CameraView videoRef={camera.videoRef} isVisible={isCameraLive} />
 
         {isCameraLive ? (
           <>
             <div className="absolute inset-x-0 top-0">
-              <TopBar tone="dark" isDemo={isDemo} onHome={goHome} isOverlay />
+              <TopBar tone="dark" isDemo={isDemo} onHome={goHome} isOverlay onEditProfile={editProfile} />
             </div>
             {state.status === "idle" && !captureError && (
               <div className="absolute inset-x-0 bottom-0 z-10 bg-linear-to-t from-moss-night/90 to-transparent px-6 pt-16 pb-[max(2rem,var(--safe-bottom))]">
@@ -133,7 +172,7 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
         ) : (
           tab === "home" && (camera.status === "denied" || camera.status === "unavailable") ? (
             <div className="flex h-full flex-col">
-              <TopBar tone="dark" isDemo={isDemo} />
+              <TopBar tone="dark" isDemo={isDemo} onEditProfile={editProfile} />
               <div className="flex min-h-0 flex-1 flex-col justify-[safe_center] px-6 pb-[calc(5.5rem+var(--safe-bottom))]">
                 <PermissionFallback reason={camera.status} onFile={onFile} onRetry={() => void camera.start()} />
               </div>
@@ -174,7 +213,7 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
               {/* Floats over the welcome grid so the orb can sit at the middle of the
                   whole screen, not the middle of the space below the header. */}
               <div className="absolute inset-x-0 top-0 z-10">
-                <TopBar tone="dark" isDemo={isDemo} />
+                <TopBar tone="dark" isDemo={isDemo} onEditProfile={editProfile} />
               </div>
               <Welcome
                 isResuming={camera.status === "paused"}
@@ -207,6 +246,23 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
             onRetry={() => void scanner.retry()}
           />
         </Panel>
+        </div>
+
+        {isIntroShowing && (
+          <OnboardingLayer>
+            {onboarding.view === "intro" ? (
+              <Intro slide={onboarding.slide} onGoToSlide={onboarding.goToSlide} onOpenQuestions={onboarding.openQuestions} />
+            ) : (
+              <IntroQuestions
+                onBack={onboarding.backToIntro}
+                onSave={finishIntro}
+                onSkip={() => finishIntro(EMPTY_PREFERENCES)}
+              />
+            )}
+          </OnboardingLayer>
+        )}
+
+        {isEditingProfile && <ProfileSheet initial={preferences} onSave={saveProfile} onDismiss={closeSheet} />}
 
         <p aria-live="polite" className="sr-only">
           {announcement(state)}
@@ -327,4 +383,15 @@ function announcement(state: ScanState): string {
     default:
       return "";
   }
+}
+
+const noopSubscribe = (): (() => void) => () => undefined;
+
+/** False during server render and hydration, true after, without a setState-in-effect. */
+function useIsClient(): boolean {
+  return useSyncExternalStore(
+    noopSubscribe,
+    () => true,
+    () => false,
+  );
 }

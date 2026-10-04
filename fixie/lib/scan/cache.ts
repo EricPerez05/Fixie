@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import type { ScanRequest, ScanResult } from "@/lib/scan/schema";
+import type { Preferences, ScanRequest, ScanResult } from "@/lib/scan/schema";
 
 const MAX_ENTRIES = 200;
 const TTL_MS = 60 * 60 * 1000;
@@ -14,16 +14,29 @@ interface Entry {
 const entries = new Map<string, Entry>();
 
 /**
- * Remembers answers for the exact same photo and location for an hour, so a
- * retry or a re-upload doesn't pay for a second vision call. Keys are hashes,
- * so no image is ever kept. Per serverless instance, which is fine for this.
+ * Remembers answers for the exact same photo, location and profile for an
+ * hour, so a retry or a re-upload doesn't pay for a second vision call. Keys
+ * are hashes, so no image is ever kept. Per serverless instance, which is
+ * fine for this.
  */
-export function cacheKey({ image, location }: ScanRequest): string {
+export function cacheKey({ image, location, preferences }: ScanRequest): string {
   return createHash("sha256")
     .update(image)
     .update("\0")
     .update(location?.toLowerCase() ?? "")
+    .update("\0")
+    .update(preferencesKey(preferences))
     .digest("hex");
+}
+
+// Ideas depend on the profile, so it's part of the key; otherwise one person's
+// personalized answer would go to someone else scanning the same photo. Sorted
+// so the same choices in a different order share an entry.
+function preferencesKey(preferences: Preferences | undefined): string {
+  if (!preferences) return "";
+  const interests = [...preferences.interests].sort().join(",");
+  const tools = [...preferences.tools].sort().join(",");
+  return `${preferences.space ?? "-"}|${interests}|${tools}`;
 }
 
 export function getCached(key: string, now = Date.now()): ScanResult | null {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ScanResult } from "@/lib/scan/schema";
+import type { Preferences, ScanResult } from "@/lib/scan/schema";
 
 const { mockCreate, MockAPIError, mockKnowledge } = vi.hoisted(() => {
   class MockAPIError extends Error {
@@ -47,6 +47,12 @@ const JAR: ScanResult = {
   confidence: "high",
 };
 
+const PROFILES: Preferences[] = [
+  { space: "indoors", interests: ["kids"], tools: ["scissors_tape"] },
+  { space: "yard", interests: ["plants", "gifts", "decor"], tools: ["basic_tools", "glue_paint", "sewing"] },
+  { space: null, interests: [], tools: [] },
+];
+
 const USAGE = { input_tokens: 1200, output_tokens: 300, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
 
 function toolResponse(input: unknown, stopReason = "tool_use"): unknown {
@@ -80,6 +86,22 @@ describe("enforceSafetyRules", () => {
   it("leaves a safe, confident result alone", () => {
     expect(enforceSafetyRules(JAR)).toEqual(JAR);
   });
+
+  // SAFETY: a profile can only narrow ideas, never bring them back.
+  it.each(PROFILES)("still strips ideas from hazardous items with preferences %#", (preferences) => {
+    const battery = { ...JAR, recyclable: "special_dropoff" as const };
+    expect(enforceSafetyRules(battery, preferences).repurpose).toEqual([]);
+    expect(enforceSafetyRules({ ...JAR, caution: "Fire risk." }, preferences).repurpose).toEqual([]);
+  });
+
+  // SAFETY: with kids, any idea that needs a safety line (cut edges, hot glue, fumes) is dropped.
+  it("drops ideas with a safety line when making with kids, and keeps them otherwise", () => {
+    const risky = { ...JAR.repurpose[0], title: "Tin lantern", safety: "Blunt the rim and wear gloves." };
+    const mixed = { ...JAR, repurpose: [risky, JAR.repurpose[0]] };
+    const kids: Preferences = { space: "indoors", interests: ["kids"], tools: ["scissors_tape"] };
+    expect(enforceSafetyRules(mixed, kids).repurpose).toEqual([JAR.repurpose[0]]);
+    expect(enforceSafetyRules(mixed, { ...kids, interests: ["plants"] }).repurpose).toEqual([risky, JAR.repurpose[0]]);
+  });
 });
 
 describe("analyzeItem", () => {
@@ -103,6 +125,31 @@ describe("analyzeItem", () => {
     expect(params.model).toBe("claude-haiku-4-5-20251001");
     expect(params.messages[0].content[0].source.data).toBe("QUJD");
     expect(params.messages[0].content[1].text).toContain("Austin, TX");
+  });
+
+  it("sends the profile in the user message, never in the system prompt", async () => {
+    mockCreate.mockResolvedValue(toolResponse(JAR));
+    await analyzeItem({ image: "QUJD", preferences: { space: "balcony", interests: ["plants"], tools: [] } });
+    const params = mockCreate.mock.calls[0][0];
+    expect(params.messages[0].content[1].text).toContain("They have a balcony and like plants. Choose and order");
+    expect(JSON.stringify(params.system)).not.toContain("balcony and like plants");
+  });
+
+  // SAFETY: the kids rule bans small loose parts, which carry no safety line.
+  it("drops ideas with small loose parts when making with kids", () => {
+    const terrarium = { ...JAR.repurpose[0], title: "Terrarium", supplies: ["Pebbles", "Potting soil"] };
+    const tealight = { ...JAR.repurpose[0], title: "Lantern", supplies: ["Button-cell tea light"] };
+    const result = { ...JAR, repurpose: [terrarium, tealight, JAR.repurpose[0]] };
+    const kids: Preferences = { space: null, interests: ["kids"], tools: [] };
+    expect(enforceSafetyRules(result, kids).repurpose).toEqual([JAR.repurpose[0]]);
+    expect(enforceSafetyRules(result).repurpose).toHaveLength(3);
+  });
+
+  it("drops risky ideas from model output when making with kids", async () => {
+    const risky = { ...JAR.repurpose[0], safety: "Hot glue burns; let an adult do it." };
+    mockCreate.mockResolvedValue(toolResponse({ ...JAR, repurpose: [risky] }));
+    const result = await analyzeItem({ image: "QUJD", preferences: { space: null, interests: ["kids"], tools: [] } });
+    expect(result.repurpose).toEqual([]);
   });
 
   it("uses SCAN_MODEL when set", async () => {

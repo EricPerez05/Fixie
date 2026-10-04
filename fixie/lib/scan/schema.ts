@@ -4,9 +4,40 @@ import { z } from "zod";
 // ~1.5MB of base64 ≈ a 1024px JPEG with plenty of headroom.
 const MAX_IMAGE_BASE64_CHARS = 1_500_000;
 
+export const Space = z.enum(["indoors", "balcony", "yard"]);
+export type Space = z.infer<typeof Space>;
+
+export const Interest = z.enum(["plants", "organizing", "decor", "gifts", "kids"]);
+export type Interest = z.infer<typeof Interest>;
+
+// "CraftTool", not "Tool": analyze.ts already works with Anthropic's Tool type.
+export const CraftTool = z.enum(["scissors_tape", "basic_tools", "glue_paint", "sewing"]);
+export type CraftTool = z.infer<typeof CraftTool>;
+
+/** A pick-any list: each value at most once, so it can never be longer than the enum. */
+function pickAny<T extends z.ZodEnum>(values: T) {
+  return z
+    .array(values)
+    .max(values.options.length)
+    .refine((list) => new Set(list).size === list.length, { message: "No duplicates" });
+}
+
+/**
+ * What the person told the fairies about themselves. Choices only, never
+ * free text, so nothing a client sends reaches the prompt verbatim. A null
+ * space or an empty list means "didn't say", not "none".
+ */
+export const Preferences = z.object({
+  space: Space.nullable(),
+  interests: pickAny(Interest),
+  tools: pickAny(CraftTool),
+});
+export type Preferences = z.infer<typeof Preferences>;
+
 export const ScanRequest = z.object({
   image: z.string().min(1).max(MAX_IMAGE_BASE64_CHARS),
   location: z.string().trim().max(80).optional(),
+  preferences: Preferences.optional(),
 });
 export type ScanRequest = z.infer<typeof ScanRequest>;
 
