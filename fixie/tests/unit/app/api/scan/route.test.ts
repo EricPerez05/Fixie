@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "@/app/api/scan/route";
 import { ScanResult, UNSURE_RESULT } from "@/lib/scan/schema";
 
@@ -16,6 +16,9 @@ function post(body: unknown, { isDemo = true } = {}): Request {
 }
 
 describe("POST /api/scan", () => {
+  beforeEach(() => vi.stubEnv("ANTHROPIC_API_KEY", "test-key"));
+  afterEach(() => vi.unstubAllEnvs());
+
   it("returns 400 for a body that isn't JSON", async () => {
     expect((await POST(post("not json"))).status).toBe(400);
   });
@@ -33,6 +36,15 @@ describe("POST /api/scan", () => {
   it("answers demo requests without calling the model", async () => {
     mockAnalyze.mockClear();
     await POST(post({ image: "QUJD" }));
+    expect(mockAnalyze).not.toHaveBeenCalled();
+  });
+
+  it("serves demo results without calling the model when no API key is set", async () => {
+    vi.stubEnv("ANTHROPIC_API_KEY", "");
+    mockAnalyze.mockClear();
+    const response = await POST(post({ image: "QUJD" }, { isDemo: false }));
+    expect(response.status).toBe(200);
+    expect(ScanResult.safeParse(await response.json()).success).toBe(true);
     expect(mockAnalyze).not.toHaveBeenCalled();
   });
 

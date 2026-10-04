@@ -17,7 +17,8 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   // Demo mode never calls the model, so it survives venue Wi-Fi and a missing key.
-  const isDemo = new URL(req.url).searchParams.get("demo") === "1";
+  // With no ANTHROPIC_API_KEY set, every scan is a demo scan, so the app runs for free.
+  const isDemo = new URL(req.url).searchParams.get("demo") === "1" || !process.env.ANTHROPIC_API_KEY;
   if (isDemo) {
     const result = pickDemoResult(parsed.data.image);
     log.info("scan.completed", { status: result.status, isDemo });
