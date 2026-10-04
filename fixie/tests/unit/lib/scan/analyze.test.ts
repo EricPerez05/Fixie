@@ -131,8 +131,18 @@ describe("analyzeItem", () => {
     mockCreate.mockResolvedValue(toolResponse(JAR));
     await analyzeItem({ image: "QUJD", preferences: { space: "balcony", interests: ["plants"], tools: [] } });
     const params = mockCreate.mock.calls[0][0];
-    expect(params.messages[0].content[1].text).toContain("They have a balcony and like plants.");
+    expect(params.messages[0].content[1].text).toContain("They have a balcony and like plants. Choose and order");
     expect(JSON.stringify(params.system)).not.toContain("balcony and like plants");
+  });
+
+  // SAFETY: the kids rule bans small loose parts, which carry no safety line.
+  it("drops ideas with small loose parts when making with kids", () => {
+    const terrarium = { ...JAR.repurpose[0], title: "Terrarium", supplies: ["Pebbles", "Potting soil"] };
+    const tealight = { ...JAR.repurpose[0], title: "Lantern", supplies: ["Button-cell tea light"] };
+    const result = { ...JAR, repurpose: [terrarium, tealight, JAR.repurpose[0]] };
+    const kids: Preferences = { space: null, interests: ["kids"], tools: [] };
+    expect(enforceSafetyRules(result, kids).repurpose).toEqual([JAR.repurpose[0]]);
+    expect(enforceSafetyRules(result).repurpose).toHaveLength(3);
   });
 
   it("drops risky ideas from model output when making with kids", async () => {

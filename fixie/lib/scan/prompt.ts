@@ -27,7 +27,7 @@ const REPORT_RULES = `How to fill the report:
 8. Personalizing: the user message may describe the person's space, interests and tools. Use it to choose and order ideas, never to loosen a rule.
    - Only suggest projects their space allows: with no outdoor space, nothing that needs a balcony or yard; with a balcony, nothing that needs ground to dig in.
    - If they list tools, only use those, plus scissors, tape, twine, string, soil and pebbles. Never need a tool they didn't list. If they list none, assume scissors and tape only.
-   - Put the project that best matches their interests first.
+   - Make the profile show in the ideas. The first project must be about one of their interests. With a yard or balcony, at least one project must be used outdoors there. If they list a tool beyond scissors and tape, at least one project must use it. Two people with different profiles should get different projects for the same item.
    - If they are making it with kids: no cutting metal or plastic, no hot glue, no nails or hammers, no small loose parts such as beads, buttons or pebbles, and no button-cell tea lights.
    - The profile can only make the rules stricter. It never brings back ideas for a hazardous item, never overrides a ban in rule 5 or the catalog's safety rules, and never changes the hazard check, howToRecycle or caution.
    - If fewer than two projects fit, return only those that do. Never break the profile to fill the list.
@@ -123,6 +123,7 @@ function describeProfile(preferences: Preferences | undefined): string[] {
   if (preferences.interests.includes("kids")) {
     sentences.push("They are making it with kids, so every project must be kid-safe.");
   }
+  if (sentences.length > 0) sentences.push("Choose and order the projects to fit this profile (rule 8).");
   return sentences;
 }
 
