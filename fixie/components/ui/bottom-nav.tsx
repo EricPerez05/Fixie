@@ -1,8 +1,14 @@
+import type { IconName } from "./icon";
 import { Icon } from "./icon";
 
+export type NavTab = "grove" | "home";
+
 interface BottomNavProps {
+  /** The screen being shown, highlighted in the bar. */
+  active: NavTab;
   /** Opens the camera, same as the big orb. */
   onScan: () => void;
+  onGrove: () => void;
   /** Returns to the start screen. */
   onHome: () => void;
   /** True while the camera permission prompt is open, so a second tap can't stack requests. */
@@ -11,37 +17,21 @@ interface BottomNavProps {
 
 // The bar is 4rem tall and floats 0.75rem above the safe area. Screens that
 // show it reserve pb-[calc(5.5rem+var(--safe-bottom))] (bar + gap + breathing
-// room) so no content sits underneath; see scan-screen.tsx. Change both together.
+// room) so no content sits underneath; see scan-screen.tsx and grove-screen.tsx.
+// Change them together.
 
 /**
- * Floating, rounded navigation bubble near the bottom of the start screen:
+ * Floating, rounded navigation bubble near the bottom of the screen:
  * Grove on the left, a raised camera button in the middle, Home on the right.
- *
- * Grove has no screen yet, so it's marked "Soon" and announced as coming
- * soon rather than being a button that silently does nothing.
  */
-export function BottomNav({ onScan, onHome, isScanBusy }: BottomNavProps): React.JSX.Element {
+export function BottomNav({ active, onScan, onGrove, onHome, isScanBusy }: BottomNavProps): React.JSX.Element {
   return (
     <nav
       aria-label="Main"
       className="absolute inset-x-5 bottom-[calc(0.75rem+var(--safe-bottom))] z-20 mx-auto max-w-sm"
     >
       <div className="grid h-16 grid-cols-[1fr_auto_1fr] items-center rounded-full border border-lichen/12 bg-moss-night/85 px-3 shadow-[0_14px_32px_-10px_color-mix(in_srgb,var(--moss-night)_80%,transparent)] backdrop-blur-md">
-        <button
-          type="button"
-          aria-disabled="true"
-          aria-label="Grove, coming soon"
-          className="relative flex min-h-11 flex-col items-center justify-center gap-0.5 justify-self-center px-3 text-lichen/55"
-        >
-          <Icon name="forest" size={22} />
-          <span className="text-[11px] font-bold tracking-wide">Grove</span>
-          <span
-            aria-hidden="true"
-            className="absolute -top-1.5 right-0 rounded-full bg-blossom px-1.5 text-[9px] leading-4 font-bold text-moss-night"
-          >
-            Soon
-          </span>
-        </button>
+        <TabButton icon="forest" label="Grove" isActive={active === "grove"} onClick={onGrove} />
 
         {/* Raised above the bar, so the main action reads first. */}
         <button
@@ -54,17 +44,35 @@ export function BottomNav({ onScan, onHome, isScanBusy }: BottomNavProps): React
           <Icon name="camera" size={26} />
         </button>
 
-        <button
-          type="button"
-          onClick={onHome}
-          aria-current="page"
-          className="flex min-h-11 flex-col items-center justify-center gap-0.5 justify-self-center px-3 text-lichen"
-        >
-          <Icon name="home" size={22} />
-          <span className="text-[11px] font-bold tracking-wide">Home</span>
-          <span aria-hidden="true" className="h-1 w-1 rounded-full bg-glimmer" />
-        </button>
+        <TabButton icon="home" label="Home" isActive={active === "home"} onClick={onHome} />
       </div>
     </nav>
+  );
+}
+
+function TabButton({
+  icon,
+  label,
+  isActive,
+  onClick,
+}: {
+  icon: IconName;
+  label: string;
+  isActive: boolean;
+  onClick: () => void;
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-current={isActive ? "page" : undefined}
+      className={`flex min-h-11 flex-col items-center justify-center gap-0.5 justify-self-center px-3 transition-colors ${
+        isActive ? "text-lichen" : "text-lichen/55 hover:text-lichen/80"
+      }`}
+    >
+      <Icon name={icon} size={22} />
+      <span className="text-[11px] font-bold tracking-wide">{label}</span>
+      <span aria-hidden="true" className={`h-1 w-1 rounded-full ${isActive ? "bg-glimmer" : "bg-transparent"}`} />
+    </button>
   );
 }
