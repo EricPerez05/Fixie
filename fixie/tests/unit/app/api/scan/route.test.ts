@@ -2,10 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { POST } from "@/app/api/scan/route";
 import { ScanResult, UNSURE_RESULT } from "@/lib/scan/schema";
 
-const { mockAnalyze } = vi.hoisted(() => ({ mockAnalyze: vi.fn() }));
+const { mockAnalyze, mockCheckRateLimit } = vi.hoisted(() => ({
+  mockAnalyze: vi.fn(),
+  mockCheckRateLimit: vi.fn(),
+}));
 
 vi.mock("@/lib/log", () => ({ log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 vi.mock("@/lib/scan/analyze", () => ({ analyzeItem: mockAnalyze }));
+vi.mock("@/lib/rate-limit", () => ({ checkRateLimit: mockCheckRateLimit }));
 
 function post(body: unknown, { isDemo = true } = {}): Request {
   return new Request(`http://localhost/api/scan${isDemo ? "?demo=1" : ""}`, {
@@ -16,8 +20,26 @@ function post(body: unknown, { isDemo = true } = {}): Request {
 }
 
 describe("POST /api/scan", () => {
-  beforeEach(() => vi.stubEnv("ANTHROPIC_API_KEY", "test-key"));
+  beforeEach(() => {
+    vi.stubEnv("ANTHROPIC_API_KEY", "test-key");
+    mockCheckRateLimit.mockResolvedValue({ ok: true });
+  });
   afterEach(() => vi.unstubAllEnvs());
+
+  it("returns 429 with Retry-After when the caller is rate-limited, before calling the model", async () => {
+    mockCheckRateLimit.mockResolvedValue({ ok: false, retryAfterSeconds: 42 });
+    mockAnalyze.mockClear();
+    const response = await POST(post({ image: "QUJD" }, { isDemo: false }));
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("42");
+    expect(await response.json()).toEqual({ error: "rate_limited" });
+    expect(mockAnalyze).not.toHaveBeenCalled();
+  });
+
+  it("rate-limits even malformed bodies, so abuse can't skip the limiter", async () => {
+    mockCheckRateLimit.mockResolvedValue({ ok: false, retryAfterSeconds: 5 });
+    expect((await POST(post("not json"))).status).toBe(429);
+  });
 
   it("returns 400 for a body that isn't JSON", async () => {
     expect((await POST(post("not json"))).status).toBe(400);

@@ -35,3 +35,33 @@ export function getScanEnv(source: NodeJS.ProcessEnv = process.env): ScanEnv {
     scanModel: parsed.data.SCAN_MODEL ?? DEFAULT_SCAN_MODEL,
   };
 }
+
+const RateLimitEnv = z.object({
+  UPSTASH_REDIS_REST_URL: z.url(),
+  UPSTASH_REDIS_REST_TOKEN: z.string().min(1),
+});
+
+export interface UpstashEnv {
+  url: string;
+  token: string;
+}
+
+/**
+ * Reads the Upstash credentials for rate limiting.
+ * Returns null when neither is set (local dev: the caller falls back to an
+ * in-memory limiter). Throws an Error naming the bad keys (never their
+ * values) when only one is set or the URL is malformed, because that is a
+ * broken deploy rather than a choice.
+ */
+export function getUpstashEnv(source: NodeJS.ProcessEnv = process.env): UpstashEnv | null {
+  const url = source.UPSTASH_REDIS_REST_URL || undefined;
+  const token = source.UPSTASH_REDIS_REST_TOKEN || undefined;
+  if (!url && !token) return null;
+
+  const parsed = RateLimitEnv.safeParse({ UPSTASH_REDIS_REST_URL: url, UPSTASH_REDIS_REST_TOKEN: token });
+  if (!parsed.success) {
+    const keys = parsed.error.issues.map((issue) => issue.path.join(".")).join(", ");
+    throw new Error(`Missing or invalid environment variables: ${keys}`);
+  }
+  return { url: parsed.data.UPSTASH_REDIS_REST_URL, token: parsed.data.UPSTASH_REDIS_REST_TOKEN };
+}
