@@ -10,6 +10,7 @@ import {
   type GroveLogRequest,
   type LogOutcome,
 } from "./entries";
+import { clearPhotos, deletePhotos, readPhoto, savePhoto } from "./photo-cache";
 import { EMPTY_SNAPSHOT, type GroveSnapshot, type GroveStore } from "./store";
 
 const STORAGE_KEY = "fixie.grove.v1";
@@ -34,6 +35,16 @@ export function createLocalGroveStore(): LocalGroveStore {
   // returns the same object between changes (useSyncExternalStore requires
   // that). Also the fallback when storage is blocked.
   let snapshot: GroveSnapshot | null = null;
+  // One object URL per photo, made on first use and revoked when the entry goes.
+  const objectUrls = new Map<string, string>();
+
+  function revoke(ids: Iterable<string>): void {
+    for (const id of ids) {
+      const url = objectUrls.get(id);
+      if (url) URL.revokeObjectURL(url);
+      objectUrls.delete(id);
+    }
+  }
 
   function read(): GroveSnapshot {
     if (snapshot === null) {
@@ -82,9 +93,12 @@ export function createLocalGroveStore(): LocalGroveStore {
 
     getSnapshot: read,
 
-    async log({ scannedAt, result }: GroveLogRequest): Promise<LogOutcome> {
-      const entry = toGroveEntry(result, new Date(scannedAt), newId());
-      if (!entry) return { ok: false, reason: "not_growable" };
+    async log({ scannedAt, result, photo }: GroveLogRequest): Promise<LogOutcome> {
+      const made = toGroveEntry(result, new Date(scannedAt), newId());
+      if (!made) return { ok: false, reason: "not_growable" };
+      // A photo that can't be saved (blocked IndexedDB) still logs the branch, with its fruit.
+      const hasPhoto = photo ? await savePhoto(made.id, photo) : false;
+      const entry = hasPhoto ? { ...made, hasPhoto } : made;
       write(appendEntry(read().entries, entry));
       return { ok: true, entry };
     },
@@ -93,11 +107,20 @@ export function createLocalGroveStore(): LocalGroveStore {
       const { entries } = read();
       if (!entries.some((entry) => entry.id === id)) return false;
       write(entries.filter((entry) => entry.id !== id));
+      revoke([id]);
+      await deletePhotos([id]);
       return true;
     },
 
-    async photoUrl() {
-      return null;
+    async photoUrl(entry) {
+      if (!entry.hasPhoto) return null;
+      const cached = objectUrls.get(entry.id);
+      if (cached) return cached;
+      const blob = await readPhoto(entry.id);
+      if (!blob || typeof URL.createObjectURL !== "function") return null;
+      const url = URL.createObjectURL(blob);
+      objectUrls.set(entry.id, url);
+      return url;
     },
 
     async refresh() {
@@ -117,10 +140,13 @@ export function createLocalGroveStore(): LocalGroveStore {
 
     clear() {
       write([]);
+      revoke([...objectUrls.keys()]);
+      void clearPhotos();
     },
 
     forget(ids) {
       write(read().entries.filter((entry) => !ids.has(entry.id)));
+      revoke(ids);
     },
   };
 }

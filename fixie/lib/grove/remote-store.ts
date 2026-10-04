@@ -56,6 +56,7 @@ export function createRemoteGroveStore({
   let syncing: Promise<void> | null = null;
   let lastSyncAt = 0;
   let isMigrating = false;
+  let deferredRefresh: ReturnType<typeof setTimeout> | null = null;
 
   function read(): GroveSnapshot {
     if (snapshot === null) {
@@ -193,7 +194,16 @@ export function createRemoteGroveStore({
     },
 
     async refresh() {
-      if (Date.now() - lastSyncAt < MIN_REFRESH_MS && read().status !== "error") return;
+      const wait = lastSyncAt + MIN_REFRESH_MS - Date.now();
+      if (wait > 0 && read().status !== "error") {
+        // Too soon after the last sync: run once when the window ends, so a
+        // photo that failed now still gets a fresh URL without a retry storm.
+        deferredRefresh ??= setTimeout(() => {
+          deferredRefresh = null;
+          void startSync();
+        }, wait);
+        return;
+      }
       await startSync();
     },
   };

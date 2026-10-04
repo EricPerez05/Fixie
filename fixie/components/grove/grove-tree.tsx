@@ -1,5 +1,17 @@
+"use client";
+
+import { useState } from "react";
 import type { GroveEntry } from "@/lib/grove/entries";
 import type { Blob, GroveLayout, LeafTone } from "@/lib/grove/layout";
+import {
+  LABEL_TOP,
+  LABEL_WIDTH,
+  labelLeft,
+  labelSpace,
+  polaroidAnchor,
+  POLAROID,
+  type PolaroidAnchor,
+} from "@/lib/grove/polaroid";
 import type { Fairy, Recyclable } from "@/lib/scan/schema";
 import { Icon } from "@/components/ui/icon";
 
@@ -11,6 +23,9 @@ interface GroveTreeProps {
   growFrom: number;
   onOpenEntry: (entry: GroveEntry) => void;
   onScan: () => void;
+  /** Entry id → photo URL, for the polaroids. Entries without one show their fruit. */
+  photos: ReadonlyMap<string, string>;
+  onPhotoError: (id: string) => void;
 }
 
 // Static class names so Tailwind can see them.
@@ -47,12 +62,8 @@ const BLOSSOMS = [
   { dx: -26, dy: 2, r: 5, isPale: true },
 ] as const;
 
-// Label width; the label is centred under its leaf cluster but kept on screen.
-const LABEL_WIDTH = 148;
-// Where the label sits relative to the cluster centre: the button's top edge,
-// and the empty space above the text that covers the cluster.
-const LABEL_TOP = -40;
-const CLUSTER_SPACE = 74;
+// The hover highlight over a branch's leaf cluster.
+const CLUSTER_WIDTH = 74;
 
 const LABEL_SHADOW = "[text-shadow:0_1px_3px_var(--grove-sky),0_0_8px_var(--grove-sky)]";
 
@@ -63,10 +74,6 @@ export function formatDate(iso: string, withYear = false): string {
     day: "numeric",
     year: withYear ? "numeric" : undefined,
   });
-}
-
-function labelLeft(x: number, width: number): number {
-  return Math.max(4, Math.min(width - LABEL_WIDTH - 4, x - LABEL_WIDTH / 2));
 }
 
 function Canopy({ blobs }: { blobs: Blob[] }): React.JSX.Element {
@@ -87,8 +94,33 @@ function Canopy({ blobs }: { blobs: Blob[] }): React.JSX.Element {
  * leaves and label, so every branch is tappable and reachable by keyboard and
  * screen reader. Buttons are listed newest first, matching the visual order.
  */
-export function GroveTree({ layout, entries, growFrom, onOpenEntry, onScan }: GroveTreeProps): React.JSX.Element {
+export function GroveTree({
+  layout,
+  entries,
+  growFrom,
+  onOpenEntry,
+  onScan,
+  photos,
+  onPhotoError,
+}: GroveTreeProps): React.JSX.Element {
   const { width, height, centerX, groundY, crown, branches, bud } = layout;
+  // Photos that have finished loading. Until then (and if one fails) the
+  // branch keeps its glowing fruit, so there's never an empty frame.
+  const [loaded, setLoaded] = useState<ReadonlySet<string>>(new Set());
+  const isShowingPhoto = (id: string): boolean => loaded.has(id) && photos.has(id);
+
+  function onPhotoLoad(id: string): void {
+    setLoaded((current) => new Set(current).add(id));
+  }
+
+  function onPhotoFail(id: string): void {
+    setLoaded((current) => {
+      const next = new Set(current);
+      next.delete(id);
+      return next;
+    });
+    onPhotoError(id);
+  }
 
   return (
     <div className="relative" style={{ height }}>
@@ -183,8 +215,9 @@ export function GroveTree({ layout, entries, growFrom, onOpenEntry, onScan }: Gr
                 />
               ))}
               <Canopy blobs={branch.canopy} />
-              {/* The fairy's glowing fruit, in the colour of the item's material. */}
-              <g className={isNew ? "grove-pop" : undefined}>
+              {/* The fairy's glowing fruit, in the colour of the item's material.
+                  A polaroid of the item takes its place once its photo loads. */}
+              <g className={isNew ? "grove-pop" : undefined} opacity={isShowingPhoto(entry.id) ? 0 : 1}>
                 <circle
                   cx={branch.tip.x}
                   cy={branch.tip.y + 13}
@@ -247,19 +280,36 @@ export function GroveTree({ layout, entries, growFrom, onOpenEntry, onScan }: Gr
             if (!branch) return null;
             const verdict = entry.result.recyclable ? VERDICT[entry.result.recyclable] : null;
             const date = formatDate(entry.scannedAt);
+            const left = labelLeft(branch.tip.x, width);
+            const top = branch.tip.y + LABEL_TOP;
+            const photo = entry.hasPhoto ? photos.get(entry.id) : undefined;
             return (
               <li key={entry.id}>
                 <button
                   type="button"
                   onClick={() => onOpenEntry(entry)}
                   aria-label={`${entry.result.item}${verdict ? `, ${verdict}` : ""}, scanned ${date}. Open result`}
-                  style={{ left: labelLeft(branch.tip.x, width), top: branch.tip.y + LABEL_TOP, width: LABEL_WIDTH }}
+                  style={{ left, top, width: LABEL_WIDTH }}
                   className={`group absolute flex flex-col items-center rounded-3xl pb-1 text-center ${isNew ? "grove-pop" : ""}`}
                 >
+                  {/* Reserves the leaf cluster (and the polaroid's drop, when the
+                      entry has a photo) so the label text always sits below it. */}
                   <span
-                    style={{ height: CLUSTER_SPACE, width: CLUSTER_SPACE }}
+                    style={{ height: labelSpace(entry.hasPhoto ?? false), width: CLUSTER_WIDTH }}
                     className="rounded-full transition-colors group-hover:bg-lichen/8"
                   />
+                  {photo && (
+                    <Polaroid
+                      src={photo}
+                      item={entry.result.item ?? ""}
+                      anchor={polaroidAnchor(branch, width, entry.id)}
+                      origin={{ left, top }}
+                      isLoaded={isShowingPhoto(entry.id)}
+                      isNew={isNew}
+                      onLoad={() => onPhotoLoad(entry.id)}
+                      onError={() => onPhotoFail(entry.id)}
+                    />
+                  )}
                   <span
                     className={`line-clamp-2 font-display text-sm leading-tight font-semibold text-lichen ${LABEL_SHADOW}`}
                   >
@@ -291,5 +341,75 @@ export function GroveTree({ layout, entries, growFrom, onOpenEntry, onScan }: Gr
         </span>
       </button>
     </div>
+  );
+}
+
+/**
+ * A cream polaroid of the scanned item, hung from its branch by a short
+ * string, tilted a little. Decorative: the branch's button carries the name.
+ * New ones drop in and sway the first time they're seen.
+ */
+function Polaroid({
+  src,
+  item,
+  anchor,
+  origin,
+  isLoaded,
+  isNew,
+  onLoad,
+  onError,
+}: {
+  src: string;
+  item: string;
+  anchor: PolaroidAnchor;
+  /** The label button's top-left in tree px; the polaroid is positioned inside it. */
+  origin: { left: number; top: number };
+  isLoaded: boolean;
+  isNew: boolean;
+  onLoad: () => void;
+  onError: () => void;
+}): React.JSX.Element {
+  const photoEdge = POLAROID.width - POLAROID.border * 2;
+  return (
+    <span
+      aria-hidden="true"
+      className={`polaroid-hang pointer-events-none absolute ${isLoaded ? (isNew ? "polaroid-drop" : "") : "opacity-0"}`}
+      style={
+        {
+          left: anchor.left - origin.left,
+          top: anchor.hook.y - origin.top,
+          width: POLAROID.width,
+          "--tilt": `${anchor.tilt}deg`,
+        } as React.CSSProperties
+      }
+    >
+      <span className="mx-auto block h-1.5 w-1.5 rounded-full bg-bark-light" />
+      <span className="mx-auto block w-px bg-lichen/55" style={{ height: POLAROID.string - 6 }} />
+      <span
+        className="block rounded-[3px] bg-paper shadow-[0_6px_14px_-4px_color-mix(in_srgb,var(--moss-night)_85%,transparent)]"
+        style={{ height: POLAROID.height, padding: `${POLAROID.border}px ${POLAROID.border}px 0` }}
+      >
+        {/* A plain img: the source is a blob: URL or a short-lived signed URL,
+            neither of which next/image can optimise. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={src}
+          alt=""
+          width={photoEdge}
+          height={photoEdge}
+          draggable={false}
+          onLoad={onLoad}
+          onError={onError}
+          className="block rounded-[1px] bg-sage object-cover"
+          style={{ width: photoEdge, height: photoEdge }}
+        />
+        <span
+          className="block truncate px-0.5 text-center font-display text-[8.5px] font-semibold text-ink"
+          style={{ lineHeight: `${POLAROID.bottom}px` }}
+        >
+          {item}
+        </span>
+      </span>
+    </span>
   );
 }

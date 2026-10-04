@@ -177,3 +177,24 @@ describe("LocalGroveStore", () => {
     expect(await store.remove("missing")).toBe(false);
   });
 });
+
+describe("RemoteGroveStore.refresh", () => {
+  it("re-syncs at most once per window, deferring a too-early refresh instead of dropping it", async () => {
+    vi.useFakeTimers();
+    try {
+      const api = fakeApi([entry("a")]);
+      const store = createRemoteGroveStore({ local: createLocalGroveStore(), fetchImpl: api.fetchImpl });
+      store.subscribe(() => undefined);
+      await vi.advanceTimersByTimeAsync(0);
+      const gets = () => api.requests.filter((r) => r.method === "GET").length;
+      expect(gets()).toBe(1);
+      await store.refresh();
+      await store.refresh();
+      expect(gets()).toBe(1);
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(gets()).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

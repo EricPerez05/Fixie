@@ -3,16 +3,16 @@
 import { useCallback, useEffect, useId, useState } from "react";
 import { MotionConfig } from "framer-motion";
 import { useCamera } from "@/hooks/use-camera";
-import { useGrove } from "@/hooks/use-grove";
+import { useGrove, useGrovePhotos } from "@/hooks/use-grove";
 import { useLocation } from "@/hooks/use-location";
 import { useRecentResult } from "@/hooks/use-recent-result";
 import { useScan, type ScanState } from "@/hooks/use-scan";
 import { captureFrame } from "@/lib/camera/capture-frame";
 import { loadImageFile } from "@/lib/camera/load-image";
-import type { GroveEntry } from "@/lib/grove/entries";
+import { makeThumbnail } from "@/lib/camera/thumbnail";
+import type { GroveEntry, LogFailure } from "@/lib/grove/entries";
 import { newId } from "@/lib/id";
 import { log } from "@/lib/log";
-import type { LogFailure } from "@/lib/grove/entries";
 import { canLog, isReopenable, type RecentResult, type ResultSource } from "@/lib/scan/recent";
 import type { ScanResult } from "@/lib/scan/schema";
 import { CameraOrb } from "./camera/camera-orb";
@@ -50,27 +50,40 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
   const camera = useCamera();
   const { location, setLocation } = useLocation();
   const grove = useGrove();
+  const [tab, setTab] = useState<NavTab>("home");
+  const grovePhotos = useGrovePhotos(grove.entries, tab === "grove");
   const { recent, setRecent, markLogged } = useRecentResult();
   // The result in the open card, with where it came from. Separate from
   // `recent`: reopening a Grove branch shows a result without replacing it.
   const [shown, setShown] = useState<RecentResult | null>(null);
 
   const [logState, setLogState] = useState<LogState | null>(null);
+  // The latest scan's thumbnail, for its polaroid. Memory only: it is stored
+  // nowhere until the user taps Log, and the next scan replaces it.
+  const [thumbnail, setThumbnail] = useState<{ id: string; base64: string } | null>(null);
 
   // Scanning alone never plants a branch: the user logs it from the card.
   const onScanned = useCallback(
-    (result: ScanResult): void => {
+    (result: ScanResult, image: string): void => {
       // A new scan always replaces the recent result, even an unsure one.
       const next = isReopenable(result) ? newRecent(result, "scan") : null;
       setRecent(next);
       setShown(next);
+      setThumbnail(null);
+      if (next && canLog(next)) {
+        makeThumbnail(image)
+          .then((base64) => setThumbnail({ id: next.id, base64 }))
+          .catch((error: unknown) => {
+            // The entry can still be logged; its branch just keeps the fruit.
+            log.warn("thumbnail.failed", { reason: error instanceof Error ? error.message : "Unknown" });
+          });
+      }
     },
     [setRecent],
   );
   const scanner = useScan({ isDemo, location, onScanned });
   const panelHeadingId = useId();
   const [captureError, setCaptureError] = useState<string | null>(null);
-  const [tab, setTab] = useState<NavTab>("home");
 
   const { state } = scanner;
   const isCameraLive = camera.status === "active";
@@ -132,7 +145,8 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
     // button) before a second tap can land; this check covers any other caller.
     if (!target || !canLog(target) || (logState?.id === target.id && logState.status === "logging")) return;
     setLogState({ id: target.id, status: "logging" });
-    const outcome = await grove.log({ scannedAt: target.scannedAt, result: target.result });
+    const photo = thumbnail?.id === target.id ? thumbnail.base64 : undefined;
+    const outcome = await grove.log({ scannedAt: target.scannedAt, result: target.result, photo });
     if (outcome.ok) {
       setLogState(null);
       // The card may have closed or moved on while saving; only update the copy it was for.
@@ -152,7 +166,7 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
 
   function logControlFor(current: RecentResult | null): LogControl | undefined {
     if (!current) return undefined;
-    const base = { hasPhoto: false, onLog: () => void logShown(), onViewGrove: viewGrove };
+    const base = { hasPhoto: thumbnail?.id === current.id, onLog: () => void logShown(), onViewGrove: viewGrove };
     if (current.entryId !== null) return { ...base, status: "logged" };
     // SAFETY: examples and unidentified results never get a Log button.
     if (!canLog(current)) return undefined;
@@ -246,6 +260,8 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
                 status={grove.status}
                 isRemote={grove.isRemote}
                 onRetry={grove.refresh}
+                photos={grovePhotos.urls}
+                onPhotoError={grovePhotos.onPhotoError}
               />
               <BottomNav
                 active="grove"

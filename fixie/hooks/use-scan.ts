@@ -44,8 +44,12 @@ export function useScan({
 }: {
   isDemo?: boolean;
   location?: string;
-  /** Called with each validated scan result (not examples or reopened results). */
-  onScanned?: (result: ScanResult) => void;
+  /**
+   * Called with each validated scan result (not examples or reopened
+   * results) and the frame that was scanned (base64 JPEG). The frame is
+   * handed over rather than kept here, so only one photo is ever in memory.
+   */
+  onScanned?: (result: ScanResult, image: string) => void;
 } = {}): UseScan {
   const [state, setState] = useState<ScanState>({ status: "idle" });
   const controllerRef = useRef<AbortController | null>(null);
@@ -85,7 +89,7 @@ export function useScan({
           return;
         }
         setState({ status: "success", result: parsed.data });
-        onScanned?.(parsed.data);
+        onScanned?.(parsed.data, image);
       } catch (error) {
         // A newer scan or reset() aborted this one; that caller owns the state now.
         if (controllerRef.current !== controller) return;

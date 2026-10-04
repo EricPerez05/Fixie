@@ -19,6 +19,9 @@ interface GroveScreenProps {
   /** True when the Grove syncs to the server, not just this phone. */
   isRemote: boolean;
   onRetry: () => void;
+  /** Entry id → photo URL for the polaroids. */
+  photos: ReadonlyMap<string, string>;
+  onPhotoError: (id: string) => void;
 }
 
 interface Measured {
@@ -43,6 +46,8 @@ export function GroveScreen({
   status,
   isRemote,
   onRetry,
+  photos,
+  onPhotoError,
 }: GroveScreenProps): React.JSX.Element {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLElement>(null);
@@ -107,6 +112,8 @@ export function GroveScreen({
               growFrom={growFrom}
               onOpenEntry={onOpenEntry}
               onScan={onScan}
+              photos={photos}
+              onPhotoError={onPhotoError}
             />
           )}
           <footer ref={footerRef} className="px-6 pt-2 pb-[calc(5.5rem+var(--safe-bottom))] text-center">
@@ -142,12 +149,12 @@ export function GroveScreen({
           )}
         </p>
         {status === "error" && (
-          <p role="status" className="pointer-events-auto mx-auto mt-2 flex max-w-xs items-center justify-center gap-2 text-xs text-lichen/80">
-            {entries.length > 0 ? "Couldn't sync. Showing what this phone remembers." : "Couldn't reach your Grove."}
+          <p role="status" className="pointer-events-auto mx-auto mt-1 flex max-w-sm items-center justify-center gap-1 text-xs text-lichen/80">
+            {entries.length > 0 ? "Couldn't sync. Showing this phone's copy." : "Couldn't reach your Grove."}
             <button
               type="button"
               onClick={onRetry}
-              className="min-h-11 rounded-full px-2 font-bold text-honey-light underline underline-offset-4"
+              className="min-h-11 shrink-0 rounded-full px-2 font-bold whitespace-nowrap text-honey-light underline underline-offset-4"
             >
               Try again
             </button>

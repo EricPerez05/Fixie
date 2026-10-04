@@ -1,8 +1,9 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import type { GroveEntry, GroveLogRequest, LogOutcome } from "@/lib/grove/entries";
 import { createLocalGroveStore, type LocalGroveStore } from "@/lib/grove/local-store";
+import { deletePhotos, readPhotoBase64 } from "@/lib/grove/photo-cache";
 import { createRemoteGroveStore } from "@/lib/grove/remote-store";
 import { EMPTY_SNAPSHOT, type GroveStatus, type GroveStore } from "@/lib/grove/store";
 
@@ -22,7 +23,9 @@ function getLocal(): LocalGroveStore {
 }
 
 function getStore(): GroveStore {
-  store ??= isRemoteConfigured ? createRemoteGroveStore({ local: getLocal() }) : getLocal();
+  store ??= isRemoteConfigured
+    ? createRemoteGroveStore({ local: getLocal(), readLocalPhoto: readPhotoBase64, forgetLocalPhotos: deletePhotos })
+    : getLocal();
   return store;
 }
 
@@ -79,4 +82,53 @@ export function useGrove(): UseGrove {
         ? { addSamples: (count) => getLocal().addSamples(count), clear: () => getLocal().clear() }
         : undefined,
   };
+}
+
+export interface UseGrovePhotos {
+  /** Entry id → a URL the browser can show. Entries without one show their fruit. */
+  urls: ReadonlyMap<string, string>;
+  /** Call when a photo fails to load: it falls back to the fruit, and an expired signed URL is refreshed. */
+  onPhotoError: (id: string) => void;
+}
+
+const NO_PHOTOS: ReadonlyMap<string, string> = new Map();
+
+/**
+ * Photo URLs for the Grove's polaroids: object URLs from IndexedDB for a
+ * local Grove, short-lived signed URLs for a remote one. Only looks them up
+ * while `isEnabled` (the Grove is on screen). Never logs a URL.
+ */
+export function useGrovePhotos(entries: readonly GroveEntry[], isEnabled: boolean): UseGrovePhotos {
+  const [urls, setUrls] = useState<ReadonlyMap<string, string>>(NO_PHOTOS);
+
+  useEffect(() => {
+    if (!isEnabled) return;
+    let isCurrent = true;
+    const activeStore = getStore();
+    void Promise.all(
+      entries.filter((entry) => entry.hasPhoto).map(async (entry) => [entry.id, await activeStore.photoUrl(entry)] as const),
+    ).then((pairs) => {
+      if (!isCurrent) return;
+      setUrls(new Map(pairs.flatMap(([id, url]) => (url ? [[id, url] as const] : []))));
+    });
+    return () => {
+      isCurrent = false;
+    };
+  }, [entries, isEnabled]);
+
+  const onPhotoError = useCallback((id: string): void => {
+    setUrls((current) => {
+      if (!current.has(id)) return current;
+      const next = new Map(current);
+      next.delete(id);
+      return next;
+    });
+    // Remote: usually an expired signed URL, and a fresh sync (throttled in
+    // the store) brings new ones. Local: an object URL won't fix itself, and
+    // re-reading would only hand back the same broken one.
+    const activeStore = getStore();
+    if (activeStore.isRemote) void activeStore.refresh();
+  }, []);
+
+  return { urls: isEnabled ? urls : NO_PHOTOS, onPhotoError };
 }
