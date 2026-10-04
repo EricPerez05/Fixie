@@ -59,6 +59,33 @@ Then `pnpm dev`. Anonymous sign-ins are already on in `config.toml`.
 Consider turning on CAPTCHA for anonymous sign-ins in production; the app
 also rate-limits `/api/grove` per IP (`GROVE_POLICY` in `lib/rate-limit.ts`).
 
+## Sign in with Google (the Home tab)
+
+Optional: the Home tab's "Sign in with Google" turns the anonymous visitor
+into a real account, so their fairy answers (`public.profiles`) and their
+Grove follow them to other devices. Without these steps the button is hidden
+and Home says sign-in is coming soon.
+
+1. **Google Cloud console → APIs & Services → Credentials:** create an OAuth
+   client ID (type *Web application*). Add
+   `https://<project-ref>.supabase.co/auth/v1/callback` as an authorised
+   redirect URI.
+2. **Supabase → Authentication → Sign In / Providers → Google:** on, with
+   that client ID and secret.
+3. **Supabase → Authentication → Sign In / Providers → Manual linking: on.**
+   It upgrades the anonymous Grove user in place (`linkIdentity`), so the
+   branches they planted stay theirs. Off, sign-in still works but starts a
+   fresh account, leaving this device's Grove behind.
+4. **Supabase → Authentication → URL Configuration → Redirect URLs:** add
+   `http://localhost:3000/auth/callback` and your Vercel URL's
+   `/auth/callback`.
+5. `supabase db push` also creates `public.profiles` (the three answers only,
+   row-level security, one row per account).
+
+If someone's Google account already has a Fixie account (they signed in on
+another device), linking fails; the app says so and the next tap signs this
+device in to that account instead.
+
 ## Moving an existing local Grove up
 
 The first time a browser reaches a configured Supabase, it uploads its local
