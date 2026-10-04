@@ -18,6 +18,7 @@ import { Icon } from "./ui/icon";
 import { InspectingOverlay } from "./ui/inspecting-overlay";
 import { LocationField } from "./ui/location-field";
 import { Panel } from "./ui/panel";
+import { PetalShower } from "./ui/petal-shower";
 import { TopBar } from "./ui/top-bar";
 
 interface ScanScreenProps {
@@ -117,24 +118,33 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
             )}
           </>
         ) : (
-          <div className="flex h-full flex-col">
-            <TopBar tone="dark" isDemo={isDemo} />
-            <div className="flex min-h-0 flex-1 flex-col justify-[safe_center] px-6 pb-[max(1rem,var(--safe-bottom))]">
-              {camera.status === "denied" || camera.status === "unavailable" ? (
+          camera.status === "denied" || camera.status === "unavailable" ? (
+            <div className="flex h-full flex-col">
+              <TopBar tone="dark" isDemo={isDemo} />
+              <div className="flex min-h-0 flex-1 flex-col justify-[safe_center] px-6 pb-[max(1rem,var(--safe-bottom))]">
                 <PermissionFallback reason={camera.status} onFile={onFile} onRetry={() => void camera.start()} />
-              ) : (
-                <Welcome
-                  isResuming={camera.status === "paused"}
-                  isRequesting={camera.status === "requesting"}
-                  onOpenCamera={() => void camera.start()}
-                  onExample={scanner.showExample}
-                  onFile={onFile}
-                  location={location}
-                  onLocationChange={setLocation}
-                />
-              )}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="relative h-full">
+              {/* Behind everything: the grid and header below are positioned, so they paint on top. */}
+              <PetalShower />
+              {/* Floats over the welcome grid so the orb can sit at the middle of the
+                  whole screen, not the middle of the space below the header. */}
+              <div className="absolute inset-x-0 top-0 z-10">
+                <TopBar tone="dark" isDemo={isDemo} />
+              </div>
+              <Welcome
+                isResuming={camera.status === "paused"}
+                isRequesting={camera.status === "requesting"}
+                onOpenCamera={() => void camera.start()}
+                onExample={scanner.showExample}
+                onFile={onFile}
+                location={location}
+                onLocationChange={setLocation}
+              />
+            </div>
+          )
         )}
 
         {state.status === "loading" && <InspectingOverlay />}
@@ -178,16 +188,14 @@ function Welcome({
   location: string;
   onLocationChange: (value: string) => void;
 }): React.JSX.Element {
+  // Three rows: above the orb, the orb, below it. The outer rows share the
+  // leftover height equally, so the orb sits at the exact middle of the screen.
+  // If one side's content needs more than half (a very short phone), that row
+  // grows and the orb shifts slightly instead of anything overflowing.
   return (
-    <div className="flex flex-col items-center text-center">
-      <section className="px-2">
-        <p className="text-xs font-bold tracking-[0.14em] text-honey-light uppercase">A little magic for our planet</p>
-        <h1 className="mt-2 font-display text-[clamp(1.6rem,5cqh,2.15rem)] leading-[1.08] font-semibold tracking-tight text-lichen">
-          What are we giving a <em className="font-semibold text-honey-light not-italic">second life</em> today?
-        </h1>
-        <p className="mx-auto mt-[clamp(6px,1.5cqh,12px)] max-w-[30ch] [@container(max-height:640px)]:hidden text-[clamp(14px,2cqh,15px)] leading-relaxed text-lichen/80">
-          Snap a photo and a fairy will tell you how to recycle it, and how to reuse it.
-        </p>
+    <div className="relative grid h-full grid-rows-[1fr_auto_1fr] px-6 text-center">
+      {/* Top padding keeps this row's content clear of the floating header. */}
+      <section className="self-end px-2 pt-[calc(4.75rem+var(--safe-top))]">
       </section>
 
       {/* iOS only grants the camera from a user gesture, so we never auto-start. */}
@@ -196,25 +204,28 @@ function Welcome({
         isWaiting={isRequesting}
         label={isResuming ? "Resume camera" : "Open camera"}
       />
+      <div className="flex flex-col items-center self-start pb-[max(1rem,var(--safe-bottom))]">
       <h2 className="mt-[clamp(8px,2.5cqh,20px)] font-display text-[clamp(1.25rem,3.4cqh,1.5rem)] font-semibold text-lichen">
         {isRequesting ? "Waiting for the camera…" : isResuming ? "Tap to resume" : "Tap to discover"}
       </h2>
-      <p className="mt-1 text-sm text-lichen/80 [@container(max-height:640px)]:hidden">Photograph any item you&rsquo;re ready to part with</p>
+      <p className="mx-auto mt-[clamp(6px,1.5cqh,12px)] max-w-[30ch] [@container(max-height:640px)]:hidden text-[clamp(14px,2cqh,15px)] leading-relaxed text-lichen/80">
+          Snap a photo and a fairy will tell you how to recycle it, and how to reuse it.
+        </p>
 
       <div className="mt-[clamp(4px,1.5cqh,16px)] flex flex-col items-center">
         <button
           type="button"
           onClick={onExample}
+          aria-label="Try a magical example"
           className="inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-honey-light"
         >
-          <span className="underline decoration-honey-light/50 underline-offset-4">or try a magical example</span>
           <Icon name="sparkle" size={14} className="fill-glimmer text-honey-light" />
         </button>
-        <UploadButton onFile={onFile} label="Upload a photo instead" />
       </div>
 
       <div className="mt-6 flex w-full justify-center">
         <LocationField value={location} onChange={onLocationChange} />
+      </div>
       </div>
     </div>
   );
