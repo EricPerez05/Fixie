@@ -34,8 +34,8 @@ export function IntroQuestions({ onBack, onSave, onSkip }: IntroQuestionsProps):
         <TextButton onClick={onSkip}>Skip for now</TextButton>
       </div>
 
-      {/* Bottom padding leaves room to scroll the last chips clear of the pinned Save button. */}
-      <div className="min-h-0 flex-1 overflow-y-auto px-6 pt-[clamp(0.25rem,2cqh,1rem)] pb-[calc(7rem+var(--safe-bottom))]">
+      {/* Sized to fit without scrolling; overflow is only a fallback for very short screens. */}
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 pt-[clamp(0.25rem,1.5cqh,1rem)]">
         <ProfileForm
           id={formId}
           look="chips"
@@ -47,11 +47,12 @@ export function IntroQuestions({ onBack, onSave, onSkip }: IntroQuestionsProps):
                 id={headingId}
                 ref={headingRef}
                 tabIndex={-1}
-                className="font-display text-[clamp(1.625rem,3.8cqh,2rem)] leading-[1.08] font-semibold tracking-[-0.01em] text-balance text-honey-light"
+                className="font-display text-[clamp(1.5rem,3.6cqh,2rem)] leading-[1.08] font-semibold tracking-[-0.01em] text-balance text-honey-light"
               >
                 {PROFILE_TITLE}
               </h1>
-              <p className="mx-auto mt-3 max-w-[28ch] text-[clamp(15px,2cqh,17px)] leading-[1.6] font-medium text-pretty text-lichen">
+              {/* Dropped on short screens, where it would push the questions into a scroll. */}
+              <p className="mx-auto mt-3 max-w-[28ch] [@container(max-height:899px)]:hidden text-[clamp(15px,2cqh,17px)] leading-[1.6] font-medium text-pretty text-lichen">
                 {PROFILE_DESCRIPTION}
               </p>
             </header>
@@ -59,8 +60,7 @@ export function IntroQuestions({ onBack, onSave, onSkip }: IntroQuestionsProps):
         />
       </div>
 
-      {/* Pinned over the bottom of the form, fading it out, so Save is always in reach. */}
-      <div className="absolute inset-x-0 bottom-0 z-10 bg-linear-to-t from-moss-deep from-60% to-transparent px-6 pt-10 pb-[max(clamp(1rem,5.4cqh,2.875rem),var(--safe-bottom))]">
+      <div className="shrink-0 px-6 pt-[clamp(0.75rem,2cqh,1rem)] pb-[max(clamp(1rem,4.5cqh,2.875rem),var(--safe-bottom))]">
         <PrimaryButton type="submit" form={formId}>
           Save
         </PrimaryButton>

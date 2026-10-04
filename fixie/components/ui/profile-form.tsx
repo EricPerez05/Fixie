@@ -140,11 +140,13 @@ function OptionGroup({
 }): React.JSX.Element {
   if (look === "chips") {
     return (
-      <fieldset className="mt-5.5 min-w-0">
-        <legend className="font-display text-[19px] font-semibold">
+      // Spacing shrinks with the screen's height (cqh), so all three questions
+      // fit without scrolling down to short phones and the desktop frame.
+      <fieldset className="mt-[clamp(0.625rem,2.4cqh,1.375rem)] min-w-0">
+        <legend className="font-display text-[clamp(1rem,2.3cqh,1.1875rem)] font-semibold">
           {legend} {hint && <span className="ml-1.5 font-sans text-[13px] font-medium text-lichen/70">{hint}</span>}
         </legend>
-        <div className="mt-2.5 flex flex-wrap gap-2">{children}</div>
+        <div className="mt-[clamp(0.375rem,1.2cqh,0.625rem)] flex flex-wrap gap-[clamp(0.375rem,1cqh,0.5rem)]">{children}</div>
       </fieldset>
     );
   }
@@ -172,7 +174,7 @@ function Option({
     return (
       <label className="relative inline-flex cursor-pointer">
         {children}
-        <span className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-lichen/30 bg-moss-night/35 px-4 text-[15px] font-semibold text-lichen transition-colors peer-checked:border-glimmer peer-checked:bg-glimmer peer-checked:text-moss-deep peer-checked:before:font-bold peer-checked:before:content-['✓'] peer-focus-visible:outline-3 peer-focus-visible:outline-offset-3 peer-focus-visible:outline-glimmer">
+        <span className="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-lichen/30 bg-moss-night/35 px-[clamp(0.75rem,1.9cqh,1rem)] text-[clamp(14px,1.8cqh,15px)] font-semibold text-lichen transition-colors peer-checked:border-glimmer peer-checked:bg-glimmer peer-checked:text-moss-deep peer-checked:before:font-bold peer-checked:before:content-['✓'] peer-focus-visible:outline-3 peer-focus-visible:outline-offset-3 peer-focus-visible:outline-glimmer">
           {label}
         </span>
       </label>
