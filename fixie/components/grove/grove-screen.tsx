@@ -24,7 +24,7 @@ interface Measured {
 }
 
 /**
- * The Grove: a tree that grows one branch per identified scan.
+ * The Grove: a tree that grows one branch per scan the user logs.
  *
  * This is the one screen that scrolls (the app is otherwise one fixed screen):
  * the tree gets taller with every scan, so it has to. Only the tree moves; the
@@ -101,7 +101,7 @@ export function GroveScreen({ entries, onOpenEntry, onScan, devTools }: GroveScr
               {first ? `Planted ${formatDate(first.scannedAt, true)}` : "A seed, waiting"}
             </p>
             <p className="mt-0.5 font-display text-sm font-semibold text-lichen/80">
-              {first ? `First scan: ${first.result.item}` : "Every scan grows a branch"}
+              {first ? `First scan: ${first.result.item}` : "Every scan you log grows a branch"}
             </p>
             <p className="mt-3 text-xs text-lichen/55">Saved on this phone only</p>
           </footer>
@@ -121,7 +121,7 @@ export function GroveScreen({ entries, onOpenEntry, onScan, devTools }: GroveScr
               <b className="font-bold text-honey-light tabular-nums">{recyclable}</b> recyclable
             </>
           ) : (
-            "Your scans grow here"
+            "Scans you log grow here"
           )}
         </p>
       </header>

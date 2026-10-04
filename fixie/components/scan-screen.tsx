@@ -1,18 +1,26 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import { MotionConfig } from "framer-motion";
 import { useCamera } from "@/hooks/use-camera";
 import { useGrove } from "@/hooks/use-grove";
 import { useLocation } from "@/hooks/use-location";
+import { useRecentResult } from "@/hooks/use-recent-result";
 import { useScan, type ScanState } from "@/hooks/use-scan";
 import { captureFrame } from "@/lib/camera/capture-frame";
 import { loadImageFile } from "@/lib/camera/load-image";
+import type { GroveEntry } from "@/lib/grove/entries";
+import { newId } from "@/lib/id";
 import { log } from "@/lib/log";
+import type { LogFailure } from "@/lib/grove/entries";
+import { canLog, isReopenable, type RecentResult, type ResultSource } from "@/lib/scan/recent";
+import type { ScanResult } from "@/lib/scan/schema";
 import { CameraOrb } from "./camera/camera-orb";
 import { CameraView } from "./camera/camera-view";
 import { PermissionFallback } from "./camera/permission-fallback";
 import { GroveScreen } from "./grove/grove-screen";
+import type { LogControl } from "./result/log-to-grove";
+import { RecentChip } from "./result/recent-chip";
 import { ScanButton } from "./camera/scan-button";
 import { UploadButton } from "./camera/upload-button";
 import { ResultCard, ResultHeading, ScanAgainButton } from "./result/result-card";
@@ -24,6 +32,15 @@ import { Panel } from "./ui/panel";
 import { PetalShower } from "./ui/petal-shower";
 import { TopBar } from "./ui/top-bar";
 
+type LogState = { id: string; status: "logging" } | { id: string; status: "error"; reason: LogFailure };
+
+const LOG_MESSAGES: Record<LogFailure, string> = {
+  not_growable: "Only items the fairies recognised can grow a branch.",
+  rate_limited: "The Grove needs a breather. Wait a minute, then try again.",
+  network: "Couldn't reach your Grove. Check your connection and try again.",
+  server: "Your Grove couldn't save that one. Try again.",
+};
+
 interface ScanScreenProps {
   isDemo: boolean;
 }
@@ -33,7 +50,24 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
   const camera = useCamera();
   const { location, setLocation } = useLocation();
   const grove = useGrove();
-  const scanner = useScan({ isDemo, location, onScanned: grove.addScan });
+  const { recent, setRecent, markLogged } = useRecentResult();
+  // The result in the open card, with where it came from. Separate from
+  // `recent`: reopening a Grove branch shows a result without replacing it.
+  const [shown, setShown] = useState<RecentResult | null>(null);
+
+  const [logState, setLogState] = useState<LogState | null>(null);
+
+  // Scanning alone never plants a branch: the user logs it from the card.
+  const onScanned = useCallback(
+    (result: ScanResult): void => {
+      // A new scan always replaces the recent result, even an unsure one.
+      const next = isReopenable(result) ? newRecent(result, "scan") : null;
+      setRecent(next);
+      setShown(next);
+    },
+    [setRecent],
+  );
+  const scanner = useScan({ isDemo, location, onScanned });
   const panelHeadingId = useId();
   const [captureError, setCaptureError] = useState<string | null>(null);
   const [tab, setTab] = useState<NavTab>("home");
@@ -75,6 +109,61 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
     }
   }
 
+  function showExample(): void {
+    const next = newRecent(scanner.showExample(), "example");
+    setRecent(next);
+    setShown(next);
+  }
+
+  function openEntry(entry: GroveEntry): void {
+    scanner.show(entry.result);
+    setShown({ id: entry.id, result: entry.result, source: "grove", scannedAt: entry.scannedAt, entryId: entry.id });
+  }
+
+  function reopenRecent(): void {
+    if (!recent) return;
+    scanner.show(recent.result);
+    setShown(recent);
+  }
+
+  async function logShown(): Promise<void> {
+    const target = shown;
+    // Clicks are discrete events, so React has re-rendered (and disabled the
+    // button) before a second tap can land; this check covers any other caller.
+    if (!target || !canLog(target) || (logState?.id === target.id && logState.status === "logging")) return;
+    setLogState({ id: target.id, status: "logging" });
+    const outcome = await grove.log({ scannedAt: target.scannedAt, result: target.result });
+    if (outcome.ok) {
+      setLogState(null);
+      // The card may have closed or moved on while saving; only update the copy it was for.
+      setShown((current) => (current?.id === target.id ? { ...current, entryId: outcome.entry.id } : current));
+      markLogged(target.id, outcome.entry.id);
+    } else {
+      log.warn("grove.log_failed", { reason: outcome.reason });
+      setLogState({ id: target.id, status: "error", reason: outcome.reason });
+    }
+  }
+
+  function viewGrove(): void {
+    scanAgain();
+    camera.stop();
+    setTab("grove");
+  }
+
+  function logControlFor(current: RecentResult | null): LogControl | undefined {
+    if (!current) return undefined;
+    const base = { hasPhoto: false, onLog: () => void logShown(), onViewGrove: viewGrove };
+    if (current.entryId !== null) return { ...base, status: "logged" };
+    // SAFETY: examples and unidentified results never get a Log button.
+    if (!canLog(current)) return undefined;
+    if (logState?.id !== current.id) return { ...base, status: "idle" };
+    return logState.status === "logging"
+      ? { ...base, status: "logging" }
+      : { ...base, status: "error", errorMessage: LOG_MESSAGES[logState.reason] };
+  }
+
+  // Every close route (swipe, backdrop, Escape, the buttons) lands here. It
+  // clears the card but keeps `recent`, so Home can offer to reopen it.
   function scanAgain(): void {
     setCaptureError(null);
     scanner.reset();
@@ -149,7 +238,7 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
             <div className="relative h-full">
               <GroveScreen
                 entries={grove.entries}
-                onOpenEntry={(entry) => scanner.show(entry.result)}
+                onOpenEntry={openEntry}
                 onScan={openCamera}
                 // Plant branches without scanning while building the Grove. The
                 // condition is inlined at build time, so production never ships it.
@@ -180,7 +269,9 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
                 isResuming={camera.status === "paused"}
                 isRequesting={camera.status === "requesting"}
                 onOpenCamera={() => void camera.start()}
-                onExample={scanner.showExample}
+                onExample={showExample}
+                recent={recent}
+                onReopen={reopenRecent}
                 onFile={onFile}
                 location={location}
                 onLocationChange={setLocation}
@@ -205,6 +296,7 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
             headingId={panelHeadingId}
             onScanAgain={scanAgain}
             onRetry={() => void scanner.retry()}
+            logControl={logControlFor(shown)}
           />
         </Panel>
 
@@ -224,6 +316,8 @@ function Welcome({
   onFile,
   location,
   onLocationChange,
+  recent,
+  onReopen,
 }: {
   isResuming: boolean;
   isRequesting: boolean;
@@ -232,6 +326,8 @@ function Welcome({
   onFile: (file: File) => void;
   location: string;
   onLocationChange: (value: string) => void;
+  recent: RecentResult | null;
+  onReopen: () => void;
 }): React.JSX.Element {
   // Three rows: above the orb, the orb, below it. The outer rows share the
   // leftover height equally, so the orb sits at the exact middle of the screen.
@@ -240,7 +336,8 @@ function Welcome({
   return (
     <div className="relative grid h-full grid-rows-[1fr_auto_1fr] px-6 text-center">
       {/* Top padding keeps this row's content clear of the floating header. */}
-      <section className="self-end px-2 pt-[calc(4.75rem+var(--safe-top))]">
+      <section className="flex min-w-0 justify-center self-end px-2 pt-[calc(4.75rem+var(--safe-top))] pb-[clamp(8px,2.5cqh,24px)]">
+        {recent && <RecentChip recent={recent} onReopen={onReopen} />}
       </section>
 
       {/* iOS only grants the camera from a user gesture, so we never auto-start. */}
@@ -276,21 +373,27 @@ function Welcome({
   );
 }
 
+function newRecent(result: ScanResult, source: ResultSource): RecentResult {
+  return { id: newId(), result, source, scannedAt: new Date().toISOString(), entryId: null };
+}
+
 function PanelBody({
   state,
   captureError,
   headingId,
   onScanAgain,
   onRetry,
+  logControl,
 }: {
   state: ScanState;
   captureError: string | null;
   headingId: string;
   onScanAgain: () => void;
   onRetry: () => void;
+  logControl: LogControl | undefined;
 }): React.JSX.Element | null {
   if (state.status === "success") {
-    return <ResultCard result={state.result} headingId={headingId} onClose={onScanAgain} />;
+    return <ResultCard result={state.result} headingId={headingId} onClose={onScanAgain} logControl={logControl} />;
   }
 
   const message = captureError ?? (state.status === "error" ? state.message : null);

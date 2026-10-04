@@ -5,12 +5,15 @@ import type { Recyclable, ScanResult } from "@/lib/scan/schema";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { Fairy, FAIRIES } from "./fairy";
 import { IdeaCard } from "./idea-card";
+import { LogStatusLine, LogToGroveButton, type LogControl } from "./log-to-grove";
 import { StepList } from "./step-list";
 
 interface ResultCardProps {
   result: ScanResult;
   headingId: string;
   onClose: () => void;
+  /** Offers "Log to Grove". Leave out for results that can't be logged (examples). */
+  logControl?: LogControl;
 }
 
 const VERDICT: Record<
@@ -47,13 +50,21 @@ const VERDICT: Record<
  */
 
 /** The fairy's report for one scan. Pure presentation: no fetching. */
-export function ResultCard({ result, headingId, onClose }: ResultCardProps): React.JSX.Element {
+export function ResultCard({ result, headingId, onClose, logControl }: ResultCardProps): React.JSX.Element {
   // SAFETY: anything short of a confident "ok" gets the retake prompt rather
   // than half an answer. The server enforces this too; this is belt and braces.
   if (result.status !== "ok" || result.confidence === "low" || !result.item) {
     return <UnsureCard result={result} headingId={headingId} onClose={onClose} />;
   }
-  return <ConfidentResult result={result} item={result.item} headingId={headingId} onClose={onClose} />;
+  return (
+    <ConfidentResult
+      result={result}
+      item={result.item}
+      headingId={headingId}
+      onClose={onClose}
+      logControl={logControl}
+    />
+  );
 }
 
 function ConfidentResult({
@@ -61,6 +72,7 @@ function ConfidentResult({
   item,
   headingId,
   onClose,
+  logControl,
 }: ResultCardProps & { item: string }): React.JSX.Element {
   const tabsId = useId();
   const [tab, setTab] = useState<"steps" | "ideas">("steps");
@@ -139,7 +151,19 @@ function ConfidentResult({
 
       <footer className="flex shrink-0 flex-col gap-2">
         <p className="text-center text-xs text-ink-soft">Rules vary by city. Check with your local hauler.</p>
-        <ScanAgainButton onClick={onClose} />
+        {logControl ? (
+          <>
+            <div className="grid grid-cols-2 gap-2">
+              <LogToGroveButton control={logControl} />
+              <ScanAgainButton onClick={onClose} variant="outline" isCompact />
+            </div>
+            <div aria-live="polite">
+              <LogStatusLine control={logControl} />
+            </div>
+          </>
+        ) : (
+          <ScanAgainButton onClick={onClose} />
+        )}
       </footer>
     </article>
   );
@@ -236,10 +260,13 @@ export function ScanAgainButton({
   onClick,
   label = "Scan another item",
   variant = "solid",
+  isCompact = false,
 }: {
   onClick: () => void;
   label?: string;
   variant?: "solid" | "outline";
+  /** Half-width, beside the Log button. */
+  isCompact?: boolean;
 }): React.JSX.Element {
   const style =
     variant === "solid" ? "bg-moss text-glimmer active:bg-moss-deep" : "border-2 border-moss text-moss";
@@ -247,7 +274,7 @@ export function ScanAgainButton({
     <button
       type="button"
       onClick={onClick}
-      className={`min-h-12 w-full shrink-0 rounded-full px-6 text-base font-semibold ${style}`}
+      className={`min-h-12 w-full shrink-0 rounded-full font-semibold ${isCompact ? "px-2 text-sm whitespace-nowrap" : "px-6 text-base"} ${style}`}
     >
       {label}
     </button>

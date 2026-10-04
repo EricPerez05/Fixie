@@ -4,8 +4,12 @@ import { getGeminiEnv, getScanEnv, getScanProvider } from "@/lib/env";
 import { log } from "@/lib/log";
 import { requestGeminiReport } from "./gemini";
 import { getKnowledgeBlock } from "./knowledge";
+import { enforceSafetyRules } from "./safety";
 import { REPORT_TOOL, REPORT_TOOL_NAME, SYSTEM_PROMPT, buildUserText } from "./prompt";
 import { MAX_IDEAS, MAX_STEPS, MAX_SUPPLIES, ScanResult, UNSURE_RESULT, type ScanRequest } from "./schema";
+
+// Re-exported so existing callers and tests keep one import for the scan pipeline.
+export { enforceSafetyRules };
 
 // Timeout sits below the route's maxDuration (30s) so we fail gracefully
 // with UNSURE_RESULT instead of the platform killing the request. One retry
@@ -154,23 +158,6 @@ function trimIdea(idea: unknown): unknown {
     ...(Array.isArray(record.supplies) && { supplies: record.supplies.slice(0, MAX_SUPPLIES) }),
     ...(Array.isArray(record.steps) && { steps: record.steps.slice(0, MAX_STEPS) }),
   };
-}
-
-/**
- * Applies the rules the prompt asks for, in code, so they hold even when the
- * model ignores the prompt. Pure; never throws.
- */
-export function enforceSafetyRules(result: ScanResult): ScanResult {
-  // SAFETY: hazardous items must never come back with reuse ideas, even if
-  // the model ignores the prompt instruction. Strip them server-side.
-  if (result.recyclable === "special_dropoff" || result.caution) {
-    result = { ...result, repurpose: [] };
-  }
-  // SAFETY: a low-confidence answer is a guess; don't present it as fact.
-  if (result.confidence === "low" && result.status === "ok") {
-    result = { ...result, status: "unsure" };
-  }
-  return result;
 }
 
 /** Test-only: forget the cached client so env changes take effect. */

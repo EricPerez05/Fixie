@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { enforceSafetyRules } from "@/lib/scan/safety";
 import { ScanResult } from "@/lib/scan/schema";
 
 /** One branch of the Grove: a scan the user made, with its full result so it can be reopened. */
@@ -20,6 +21,19 @@ export const MAX_GROVE_ENTRIES = 500;
 export function canGrow(result: ScanResult): boolean {
   return result.status === "ok" && result.confidence !== "low" && result.item !== null && result.fairy !== null;
 }
+
+/** What the client sends to log a result to the Grove. */
+export const GroveLogRequest = z.object({
+  scannedAt: z.iso.datetime(),
+  result: ScanResult,
+});
+export type GroveLogRequest = z.infer<typeof GroveLogRequest>;
+
+/** Why logging failed, mapped to friendly copy by the UI. */
+export type LogFailure = "not_growable" | "rate_limited" | "network" | "server";
+
+/** Logging's outcome. Expected failures are values, not exceptions. */
+export type LogOutcome = { ok: true; entry: GroveEntry } | { ok: false; reason: LogFailure };
 
 /** Wraps a scan result as a Grove entry. Returns null when the scan shouldn't grow a branch. */
 export function toGroveEntry(result: ScanResult, scannedAt: Date, id: string): GroveEntry | null {
@@ -49,7 +63,11 @@ export function parseGrove(raw: string | null): GroveEntry[] {
   return data
     .flatMap((item: unknown) => {
       const parsed = GroveEntry.safeParse(item);
-      return parsed.success && canGrow(parsed.data.result) ? [parsed.data] : [];
+      if (!parsed.success) return [];
+      // SAFETY: stored results get the same rules as fresh ones, so an entry
+      // saved before a rule changed can't reopen with advice we no longer give.
+      const entry = { ...parsed.data, result: enforceSafetyRules(parsed.data.result) };
+      return canGrow(entry.result) ? [entry] : [];
     })
     .slice(-MAX_GROVE_ENTRIES);
 }

@@ -277,7 +277,7 @@ export function GroveTree({ layout, entries, growFrom, onOpenEntry, onScan }: Gr
       <button
         type="button"
         onClick={onScan}
-        aria-label={entries.length > 0 ? "Scan an item to grow your next branch" : "Scan your first item"}
+        aria-label={entries.length > 0 ? "Scan an item, then log it to grow your next branch" : "Scan your first item"}
         style={{ left: labelLeft(bud.tip.x, width), top: bud.tip.y - 22, width: LABEL_WIDTH }}
         className="group absolute flex flex-col items-center gap-2 rounded-3xl pb-1 text-center"
       >
@@ -285,9 +285,9 @@ export function GroveTree({ layout, entries, growFrom, onOpenEntry, onScan }: Gr
           <Icon name="plus" size={16} />
         </span>
         <span className="text-[11px] leading-snug font-bold text-lichen/70">
-          {entries.length > 0 ? "Your next scan" : "Scan your first item"}
+          {entries.length > 0 ? "Log your next scan" : "Scan and log an item"}
           <br />
-          grows a branch here
+          to grow a branch here
         </span>
       </button>
     </div>

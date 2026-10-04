@@ -1,9 +1,16 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { appendEntry, parseGrove, toGroveEntry, type GroveEntry } from "@/lib/grove/entries";
+import {
+  appendEntry,
+  parseGrove,
+  toGroveEntry,
+  type GroveEntry,
+  type GroveLogRequest,
+  type LogOutcome,
+} from "@/lib/grove/entries";
 import { DEMO_RESULTS } from "@/lib/scan/demo-results";
-import type { ScanResult } from "@/lib/scan/schema";
+import { newId } from "@/lib/id";
 import { log } from "@/lib/log";
 
 const STORAGE_KEY = "fixie.grove.v1";
@@ -56,17 +63,12 @@ function subscribe(listener: () => void): () => void {
   };
 }
 
-function newId(): string {
-  // randomUUID only exists in secure contexts; a LAN http:// address isn't one.
-  return typeof crypto.randomUUID === "function"
-    ? crypto.randomUUID()
-    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-}
-
-/** Plants a branch for a scan. Unidentified scans are ignored. */
-function addScan(result: ScanResult): void {
-  const entry = toGroveEntry(result, new Date(), newId());
-  if (entry) write(appendEntry(read(), entry));
+/** Plants a branch for a result the user chose to log. Unidentified scans are refused. */
+async function logEntry({ scannedAt, result }: GroveLogRequest): Promise<LogOutcome> {
+  const entry = toGroveEntry(result, new Date(scannedAt), newId());
+  if (!entry) return { ok: false, reason: "not_growable" };
+  write(appendEntry(read(), entry));
+  return { ok: true, entry };
 }
 
 /** Dev only: plants `count` branches from the canned demo results. */
@@ -104,17 +106,18 @@ export function markSeen(count: number): void {
 export interface UseGrove {
   /** Oldest first. */
   entries: readonly GroveEntry[];
-  addScan: (result: ScanResult) => void;
+  /** Saves a result as a new branch. Resolves with the entry, or why it failed; never rejects. */
+  log: (request: GroveLogRequest) => Promise<LogOutcome>;
   addSamples: (count: number) => void;
   clear: () => void;
 }
 
 /**
- * The user's Grove: every identified scan, saved on this device only. No
- * accounts and no images; just the results, so a branch can reopen its answer.
+ * The user's Grove: every result they chose to log, saved on this device
+ * only. No accounts; just the results, so a branch can reopen its answer.
  */
 export function useGrove(): UseGrove {
   // The server snapshot is empty, so the first render matches the server's.
   const entries = useSyncExternalStore(subscribe, read, () => EMPTY);
-  return { entries, addScan, addSamples, clear };
+  return { entries, log: logEntry, addSamples, clear };
 }
