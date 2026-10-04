@@ -3,6 +3,10 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getSupabaseConfig } from "@/lib/supabase/config";
 import { log } from "@/lib/log";
 
+// Every page waits on this refresh, so Supabase gets this long and no more.
+// Slow or unreachable, the request is aborted and the page renders signed out.
+const REFRESH_TIMEOUT_MS = 2000;
+
 /**
  * Refreshes the Supabase session before a page renders, so an expired access
  * token is swapped for a new one and the new cookies reach the browser. With
@@ -14,6 +18,9 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
 
   let response = NextResponse.next({ request });
   const supabase = createServerClient(supabaseConfig.url, supabaseConfig.anonKey, {
+    global: {
+      fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(REFRESH_TIMEOUT_MS) }),
+    },
     cookies: {
       getAll: () => request.cookies.getAll(),
       setAll: (cookiesToSet, headers) => {
