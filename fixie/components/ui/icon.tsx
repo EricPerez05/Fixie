@@ -11,7 +11,8 @@ export type IconName =
   | "close"
   | "alert"
   | "forest"
-  | "home";
+  | "home"
+  | "plus";
 
 const PATHS: Record<IconName, ReactNode> = {
   camera: (
@@ -57,6 +58,7 @@ const PATHS: Record<IconName, ReactNode> = {
       <path d="M10 19.5v-5h4v5" />
     </>
   ),
+  plus: <path d="M12 5v14M5 12h14" />,
   alert: (
     <>
       <path d="M12 3.5 21.5 20h-19L12 3.5Z" />

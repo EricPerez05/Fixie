@@ -17,6 +17,8 @@ export interface UseScan {
   retry: () => Promise<void>;
   /** Shows a canned result with no camera and no network, for the "try an example" link. */
   showExample: () => void;
+  /** Shows a result the user already has, such as a Grove branch, with no network. */
+  show: (result: ScanResult) => void;
   reset: () => void;
 }
 
@@ -35,7 +37,16 @@ const MESSAGES = {
  * success | error. The response is validated against the shared schema, so
  * the UI never renders a shape it doesn't understand.
  */
-export function useScan({ isDemo = false, location = "" }: { isDemo?: boolean; location?: string } = {}): UseScan {
+export function useScan({
+  isDemo = false,
+  location = "",
+  onScanned,
+}: {
+  isDemo?: boolean;
+  location?: string;
+  /** Called with each validated scan result (not examples or reopened results). */
+  onScanned?: (result: ScanResult) => void;
+} = {}): UseScan {
   const [state, setState] = useState<ScanState>({ status: "idle" });
   const controllerRef = useRef<AbortController | null>(null);
   const lastImageRef = useRef<string | null>(null);
@@ -74,6 +85,7 @@ export function useScan({ isDemo = false, location = "" }: { isDemo?: boolean; l
           return;
         }
         setState({ status: "success", result: parsed.data });
+        onScanned?.(parsed.data);
       } catch (error) {
         // A newer scan or reset() aborted this one; that caller owns the state now.
         if (controllerRef.current !== controller) return;
@@ -85,20 +97,23 @@ export function useScan({ isDemo = false, location = "" }: { isDemo?: boolean; l
         window.clearTimeout(timeout);
       }
     },
-    [isDemo, location],
+    [isDemo, location, onScanned],
   );
 
   const retry = useCallback(async (): Promise<void> => {
     if (lastImageRef.current) await scan(lastImageRef.current);
   }, [scan]);
 
-  const showExample = useCallback((): void => {
+  const show = useCallback((result: ScanResult): void => {
     controllerRef.current?.abort();
     controllerRef.current = null;
     lastImageRef.current = null;
-    const example = DEMO_RESULTS[Math.floor(Math.random() * DEMO_RESULTS.length)];
-    setState({ status: "success", result: example });
+    setState({ status: "success", result });
   }, []);
+
+  const showExample = useCallback((): void => {
+    show(DEMO_RESULTS[Math.floor(Math.random() * DEMO_RESULTS.length)]);
+  }, [show]);
 
   const reset = useCallback((): void => {
     controllerRef.current?.abort();
@@ -109,5 +124,5 @@ export function useScan({ isDemo = false, location = "" }: { isDemo?: boolean; l
 
   useEffect(() => () => controllerRef.current?.abort(), []);
 
-  return { state, scan, retry, showExample, reset };
+  return { state, scan, retry, showExample, show, reset };
 }

@@ -3,6 +3,7 @@
 import { useEffect, useId, useState } from "react";
 import { AnimatePresence, MotionConfig } from "framer-motion";
 import { useCamera } from "@/hooks/use-camera";
+import { useGrove } from "@/hooks/use-grove";
 import { useLocation } from "@/hooks/use-location";
 import { useScan, type ScanState } from "@/hooks/use-scan";
 import { captureFrame } from "@/lib/camera/capture-frame";
@@ -11,10 +12,11 @@ import { log } from "@/lib/log";
 import { CameraOrb } from "./camera/camera-orb";
 import { CameraView } from "./camera/camera-view";
 import { PermissionFallback } from "./camera/permission-fallback";
+import { GroveScreen } from "./grove/grove-screen";
 import { ScanButton } from "./camera/scan-button";
 import { UploadButton } from "./camera/upload-button";
 import { ResultCard, ResultHeading, ScanAgainButton } from "./result/result-card";
-import { BottomNav } from "./ui/bottom-nav";
+import { BottomNav, type NavTab } from "./ui/bottom-nav";
 import { Icon } from "./ui/icon";
 import { InspectingOverlay } from "./ui/inspecting-overlay";
 import { LocationField } from "./ui/location-field";
@@ -30,9 +32,11 @@ interface ScanScreenProps {
 export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
   const camera = useCamera();
   const { location, setLocation } = useLocation();
-  const scanner = useScan({ isDemo, location });
+  const grove = useGrove();
+  const scanner = useScan({ isDemo, location, onScanned: grove.addScan });
   const panelHeadingId = useId();
   const [captureError, setCaptureError] = useState<string | null>(null);
+  const [tab, setTab] = useState<NavTab>("home");
 
   const { state } = scanner;
   const isCameraLive = camera.status === "active";
@@ -80,6 +84,14 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
   function goHome(): void {
     scanAgain();
     camera.stop();
+    setTab("home");
+  }
+
+  // The camera and its permission fallback belong to Home, so leave the Grove
+  // first; otherwise a denied camera would show nothing from the Grove.
+  function openCamera(): void {
+    setTab("home");
+    void camera.start();
   }
 
   const onFile = (file: File): void => void scanFromFile(file);
@@ -119,13 +131,41 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
             )}
           </>
         ) : (
-          camera.status === "denied" || camera.status === "unavailable" ? (
+          tab === "home" && (camera.status === "denied" || camera.status === "unavailable") ? (
             <div className="flex h-full flex-col">
               <TopBar tone="dark" isDemo={isDemo} />
               <div className="flex min-h-0 flex-1 flex-col justify-[safe_center] px-6 pb-[calc(5.5rem+var(--safe-bottom))]">
                 <PermissionFallback reason={camera.status} onFile={onFile} onRetry={() => void camera.start()} />
               </div>
-              <BottomNav onScan={() => void camera.start()} onHome={goHome} isScanBusy={false} />
+              <BottomNav
+                active="home"
+                onScan={openCamera}
+                onGrove={() => setTab("grove")}
+                onHome={goHome}
+                isScanBusy={false}
+              />
+            </div>
+          ) : tab === "grove" ? (
+            <div className="relative h-full">
+              <GroveScreen
+                entries={grove.entries}
+                onOpenEntry={(entry) => scanner.show(entry.result)}
+                onScan={openCamera}
+                // Plant branches without scanning while building the Grove. The
+                // condition is inlined at build time, so production never ships it.
+                devTools={
+                  process.env.NODE_ENV === "development"
+                    ? { addSamples: grove.addSamples, clear: grove.clear }
+                    : undefined
+                }
+              />
+              <BottomNav
+                active="grove"
+                onScan={openCamera}
+                onGrove={() => setTab("grove")}
+                onHome={goHome}
+                isScanBusy={camera.status === "requesting"}
+              />
             </div>
           ) : (
             <div className="relative h-full">
@@ -146,7 +186,9 @@ export function ScanScreen({ isDemo }: ScanScreenProps): React.JSX.Element {
                 onLocationChange={setLocation}
               />
               <BottomNav
-                onScan={() => void camera.start()}
+                active="home"
+                onScan={openCamera}
+                onGrove={() => setTab("grove")}
                 onHome={goHome}
                 isScanBusy={camera.status === "requesting"}
               />
