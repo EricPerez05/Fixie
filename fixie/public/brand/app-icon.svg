@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="46%" r="60%">
+      <stop offset="0" stop-color="#527e50" stop-opacity=".55"/>
+      <stop offset="1" stop-color="#527e50" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" fill="#1f553b"/>
+  <rect width="512" height="512" fill="url(#glow)"/>
+  <path d="M205.9 153.9Q267.2 69.9 328.5 161.0" fill="none" stroke="#ffe889" stroke-width="7.0" stroke-linecap="round" stroke-dasharray="0.07 16.80"/>
+  <g transform="translate(156.00 118.00) scale(11.500)" fill="#f7f3df">
+    <rect x=".5" y="2.2" width="6" height="2.2" rx=".8" transform="rotate(-24 .5 4.4)"/>
+    <path d="M1.6 7.6h3.8v1c1 .5 1.4 1.3 1.4 2.4v12.4A2.6 2.6 0 0 1 4.2 26H2.8A2.6 2.6 0 0 1 .2 23.4V11c0-1.1.4-1.9 1.4-2.4Z"/>
+    <path d="M1.9 12.6v7.2" stroke="#1f553b" stroke-width=".9" stroke-linecap="round" opacity=".55"/>
+  </g>
+  <g transform="translate(356.0 156.0) scale(4.167)" fill="#ffe889">
+    <circle r="10" opacity=".18"/>
+    <circle r="6" opacity=".25"/>
+    <path d="M0-8c.5 4 3 6.5 8 8-5 1.5-7.5 4-8 8-.5-4-3-6.5-8-8 5-1.5 7.5-4 8-8Z"/>
+  </g>
+</svg>
